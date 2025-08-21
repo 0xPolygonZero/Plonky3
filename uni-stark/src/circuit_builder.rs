@@ -6,12 +6,62 @@ use p3_field::{ExtensionField, Field};
 use crate::{Entry, SymbolicExpression};
 
 #[derive(Debug, Clone, Copy)]
-pub enum Gate {
+pub enum Operation {
     Add,
     Mul,
     Sub,
     Fri,
     MerkleTree,
+}
+
+pub trait Gate {
+    fn add_to_circuit<F: Field, C: CircuitBuilder<F>>(
+        circuit: &mut C,
+        inp1: Wire<F>,
+        inp2: Wire<F>,
+        out: Wire<F>,
+    ) {
+        circuit.add_gate(Operation::Add, inp1, inp2, out);
+    }
+}
+
+pub struct AddGate {}
+
+impl Gate for AddGate {
+    fn add_to_circuit<F: Field, C: CircuitBuilder<F>>(
+        circuit: &mut C,
+        inp1: Wire<F>,
+        inp2: Wire<F>,
+        out: Wire<F>,
+    ) {
+        circuit.add_gate(Operation::Add, inp1, inp2, out);
+    }
+}
+
+pub struct SubGate {}
+
+impl Gate for SubGate {
+    fn add_to_circuit<F: Field, C: CircuitBuilder<F>>(
+        circuit: &mut C,
+        inp1: Wire<F>,
+        inp2: Wire<F>,
+        out: Wire<F>,
+    ) {
+        circuit.add_gate(Operation::Sub, inp1, inp2, out);
+    }
+}
+
+pub struct MulGate {}
+
+impl Gate for MulGate {
+    fn add_to_circuit<F: Field, C: CircuitBuilder<F>>(
+        circuit: &mut C,
+        inp1: Wire<F>,
+        inp2: Wire<F>,
+        out: Wire<F>,
+    ) {
+        circuit.add_gate(Operation::Mul, inp1, inp2, out);
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -21,7 +71,7 @@ pub struct Wire<F: Field> {
 }
 
 pub trait CircuitBuilder<F: Field> {
-    fn add_gate(&mut self, g: Gate, a: Wire<F>, b: Wire<F>) -> Wire<F>;
+    fn add_gate(&mut self, g: Operation, a: Wire<F>, b: Wire<F>, out: Wire<F>) -> Wire<F>;
 
     fn new_wire(&mut self) -> Wire<F>;
 
@@ -93,7 +143,12 @@ pub fn symbolic_to_circuit<F: Field, EF: ExtensionField<F>, C: CircuitBuilder<EF
                 y,
                 circuit,
             );
-            circuit.add_gate(Gate::Add, x_wire, y_wire)
+
+            let out_wire = circuit.new_wire();
+
+            AddGate::add_to_circuit(circuit, x_wire, y_wire, out_wire);
+
+            out_wire
         }
         SymbolicExpression::Mul { x, y, .. } => {
             let x_wire = symbolic_to_circuit(
@@ -122,7 +177,11 @@ pub fn symbolic_to_circuit<F: Field, EF: ExtensionField<F>, C: CircuitBuilder<EF
                 y,
                 circuit,
             );
-            circuit.add_gate(Gate::Mul, x_wire, y_wire)
+
+            let out_wire = circuit.new_wire();
+
+            MulGate::add_to_circuit(circuit, x_wire, y_wire, out_wire);
+            out_wire
         }
         SymbolicExpression::Sub { x, y, .. } => {
             let x_wire = symbolic_to_circuit(
@@ -152,7 +211,11 @@ pub fn symbolic_to_circuit<F: Field, EF: ExtensionField<F>, C: CircuitBuilder<EF
                 circuit,
             );
 
-            circuit.add_gate(Gate::Sub, x_wire, y_wire)
+            let out_wire = circuit.new_wire();
+
+            SubGate::add_to_circuit(circuit, x_wire, y_wire, out_wire);
+
+            out_wire
         }
         SymbolicExpression::Neg { x, .. } => {
             let x_wire = symbolic_to_circuit(
@@ -170,7 +233,11 @@ pub fn symbolic_to_circuit<F: Field, EF: ExtensionField<F>, C: CircuitBuilder<EF
             );
             let zero = circuit.add_constant(EF::ZERO);
 
-            circuit.add_gate(Gate::Sub, zero, x_wire)
+            let out_wire = circuit.new_wire();
+
+            AddGate::add_to_circuit(circuit, zero, x_wire, out_wire);
+
+            out_wire
         }
         SymbolicExpression::IsFirstRow => is_first_row,
         SymbolicExpression::IsLastRow => is_last_row,
@@ -180,13 +247,12 @@ pub fn symbolic_to_circuit<F: Field, EF: ExtensionField<F>, C: CircuitBuilder<EF
 
 pub struct DummyCircuit<F: Field> {
     pub wires: Vec<Wire<F>>,
-    pub events: Vec<(Gate, Wire<F>, Wire<F>, Wire<F>)>,
+    pub events: Vec<(Operation, Wire<F>, Wire<F>, Wire<F>)>,
     forest: Vec<Vec<(usize, usize)>>,
 }
 
 impl<F: Field> CircuitBuilder<F> for DummyCircuit<F> {
-    fn add_gate(&mut self, g: Gate, a: Wire<F>, b: Wire<F>) -> Wire<F> {
-        let output = self.new_wire();
+    fn add_gate(&mut self, g: Operation, a: Wire<F>, b: Wire<F>, output: Wire<F>) -> Wire<F> {
         self.events.push((g, a.clone(), b.clone(), output.clone()));
 
         let output_index = self.wires.len() - 1;
@@ -286,19 +352,19 @@ impl<F: Field> DummyCircuit<F> {
         for i in 0..self.events.len() {
             let event = &self.events[i];
             let (out, out_wire_idx) = match event.0 {
-                Gate::Add => {
+                Operation::Add => {
                     let out = event.1.value.unwrap() + event.2.value.unwrap();
                     (out, event.3.index)
                 }
-                Gate::Mul => {
+                Operation::Mul => {
                     let out = event.1.value.unwrap() * event.2.value.unwrap();
                     (out, event.3.index)
                 }
-                Gate::Sub => {
+                Operation::Sub => {
                     let out = event.1.value.unwrap() - event.2.value.unwrap();
                     (out, event.3.index)
                 }
-                Gate::Fri | Gate::MerkleTree => {
+                Operation::Fri | Operation::MerkleTree => {
                     // These gates do not produce a value in this dummy circuit
                     unimplemented!()
                 }
