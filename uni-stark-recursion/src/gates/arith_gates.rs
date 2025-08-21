@@ -1,3 +1,5 @@
+use core::marker::PhantomData;
+
 use p3_field::Field;
 
 use crate::circuit_builder::{CircuitBuilder, CircuitError, WireId};
@@ -6,7 +8,7 @@ use crate::gates::gate::Gate;
 pub struct AddGate<F: Field> {
     inputs: Vec<WireId>,
     outputs: Vec<WireId>,
-    _marker: std::marker::PhantomData<F>,
+    _marker: PhantomData<F>,
 }
 
 const BINOP_N_INPUTS: usize = 2;
@@ -20,7 +22,7 @@ impl<F: Field> AddGate<F> {
         AddGate {
             inputs,
             outputs,
-            _marker: std::marker::PhantomData,
+            _marker: PhantomData,
         }
     }
 
@@ -59,7 +61,7 @@ impl<F: Field> Gate<F> for AddGate<F> {
 pub struct SubGate<F: Field> {
     inputs: Vec<WireId>,
     outputs: Vec<WireId>,
-    _marker: std::marker::PhantomData<F>,
+    _marker: PhantomData<F>,
 }
 
 impl<F: Field> SubGate<F> {
@@ -70,7 +72,7 @@ impl<F: Field> SubGate<F> {
         SubGate {
             inputs,
             outputs,
-            _marker: std::marker::PhantomData,
+            _marker: PhantomData,
         }
     }
 
@@ -109,7 +111,7 @@ impl<F: Field> Gate<F> for SubGate<F> {
 pub struct MulGate<F: Field> {
     inputs: Vec<WireId>,
     outputs: Vec<WireId>,
-    _marker: std::marker::PhantomData<F>,
+    _marker: PhantomData<F>,
 }
 impl<F: Field> MulGate<F> {
     pub fn new(inputs: Vec<WireId>, outputs: Vec<WireId>) -> Self {
@@ -119,7 +121,7 @@ impl<F: Field> MulGate<F> {
         MulGate {
             inputs,
             outputs,
-            _marker: std::marker::PhantomData,
+            _marker: PhantomData,
         }
     }
 

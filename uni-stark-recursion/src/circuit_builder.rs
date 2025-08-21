@@ -1,3 +1,4 @@
+use hashbrown::HashMap;
 use p3_field::Field;
 
 use crate::gates::gate::Gate;
@@ -6,6 +7,7 @@ pub(crate) type WireId = usize;
 
 pub struct CircuitBuilder<F: Field> {
     wires: Vec<Option<F>>,
+    constants: HashMap<F, WireId>,
     gate_instances: Vec<Box<dyn Gate<F>>>,
 }
 
@@ -13,6 +15,7 @@ impl<F: Field> CircuitBuilder<F> {
     pub fn new() -> Self {
         CircuitBuilder {
             wires: Vec::new(),
+            constants: HashMap::new(),
             gate_instances: Vec::new(),
         }
     }
@@ -20,6 +23,17 @@ impl<F: Field> CircuitBuilder<F> {
     pub fn new_wire(&mut self) -> WireId {
         self.wires.push(None);
         self.wires.len() - 1
+    }
+
+    pub fn add_constant(&mut self, value: F) -> WireId {
+        if let Some(&id) = self.constants.get(&value) {
+            id
+        } else {
+            let id = self.new_wire();
+            self.set_wire_value(id, value).unwrap();
+            self.constants.insert(value, id);
+            id
+        }
     }
 
     pub fn add_gate(&mut self, gate: Box<dyn Gate<F>>) {
