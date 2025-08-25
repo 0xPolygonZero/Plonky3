@@ -13,44 +13,37 @@ use proof_generation_utils::*;
 fn test_fri_verifier_air_stark_proving() {
     let mut rng = SmallRng::seed_from_u64(42);
 
-    // Generate real FRI proof data for CommitPhase AIR using utility function
-    let polynomial_log_sizes = [4, 6]; // Small sizes for faster testing
+    // 1) Generate REAL commit-phase rows from a fresh FRI proof (verifier view)
+    let polynomial_log_sizes = [4, 6]; // small for speed
     let commit_phase_steps =
         extract_commit_phase_steps_from_fri_verification(&mut rng, &polynomial_log_sizes);
 
-    // Generate trace from real data
+    // 2) Build the AIR trace from rows
     let mut trace = generate_commit_phase_trace(&commit_phase_steps);
 
-    // Pad trace to power of 2 for STARK proving
-    let trace_height = trace.height();
-    if trace_height > 0 && (trace_height & (trace_height - 1)) != 0 {
-        // Not a power of 2, find next power of 2
-        let next_power_of_2 = 1 << (trace_height.ilog2() + 1);
+    // 3) Pad to power-of-two height for STARK proving (repeat last row)
+    let h = trace.height();
+    if h > 0 && !h.is_power_of_two() {
+        let target = h.next_power_of_two();
+        let pad_rows = target - h;
 
-        // Pad with dummy rows
-        let padding_rows = next_power_of_2 - trace_height;
-        let mut padded_data = trace.values.clone();
-
-        // Add dummy rows (just copy the last row)
-        if let Some(last_row) = trace.row_slice(trace_height - 1) {
-            for _ in 0..padding_rows {
-                padded_data.extend_from_slice(&*last_row);
+        let mut padded = trace.values.clone();
+        if let Some(last) = trace.row_slice(h - 1) {
+            for _ in 0..pad_rows {
+                padded.extend_from_slice(&*last);
             }
         }
-
-        trace = RowMajorMatrix::new(padded_data, trace.width());
+        trace = RowMajorMatrix::new(padded, trace.width());
     }
 
-    // Setup STARK configuration using utility function
+    // 4) STARK config (PCS + challenger)
     let config = create_stark_config(&mut rng);
 
-    // Create AIR instance
+    // 5) Prove & verify with the updated AIR
     let air = CommitPhaseAir::<Val>::new();
+    let public_inputs = vec![];
 
-    // Prove
-    let proof = prove(&config, &air, trace, &vec![]);
-
-    // Verify
-    verify(&config, &air, &proof, &vec![])
+    let proof = prove(&config, &air, trace, &public_inputs);
+    verify(&config, &air, &proof, &public_inputs)
         .expect("FRI Verifier AIR STARK proof verification failed");
 }

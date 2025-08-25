@@ -1,40 +1,43 @@
 use alloc::vec::Vec;
 use p3_field::extension::BinomiallyExtendable;
-use p3_field::{
-    BasedVectorSpace, Field, PrimeCharacteristicRing, extension::BinomialExtensionField,
-};
+use p3_field::{extension::BinomialExtensionField, BasedVectorSpace, Field, PrimeCharacteristicRing};
 use p3_matrix::dense::RowMajorMatrix;
 
 use crate::columns::CommitPhaseCols;
 
-/// Data structure representing a single FRI commit phase folding step.
-/// This mirrors the data captured in simulate_fri_verification_immediate_values.
+/// Data structure representing a single FRI commit phase folding step,
+/// aligned with `CommitPhaseCols`.
 #[derive(Debug, Clone)]
 pub struct CommitPhaseStep<F: Field> {
-    // Query identification (base field)
+    // Identification (base)
     pub query_index: F,
     pub phase_index: F,
 
-    // FRI challenges and evaluations (extension field)
+    // Challenges & evals (ext)
     pub beta: BinomialExtensionField<F, 4>,
     pub eval_0: BinomialExtensionField<F, 4>,
     pub eval_1: BinomialExtensionField<F, 4>,
-    pub roll_in_value: BinomialExtensionField<F, 4>,
 
-    // Domain management (base field - these are indices/positions)
+    // Roll-in gating & values
+    pub is_roll_in: F,                                 // {0,1}
+    pub reduced_opening: BinomialExtensionField<F, 4>, // ro at this height (or 0)
+    pub beta_squared: BinomialExtensionField<F, 4>,
+    pub roll_in_contribution: BinomialExtensionField<F, 4>,
+
+    // Indices (base)
     pub domain_index: F,
     pub parent_index: F,
     pub sibling_index: F,
+    pub lsb: F, // domain_index & 1
 
-    // Subgroup points (base field - two-adic subgroup elements)
+    // Height (base)
+    pub log_height: F,
+
+    // Subgroup points (base)
     pub x0: F,
     pub x1: F,
 
-    // Verification flags (base field)
-    pub mmcs_verified: F,
-    pub log_height: F,
-    
-    // FRI folding arithmetic intermediate values
+    // Folding intermediates
     pub beta_minus_x0: BinomialExtensionField<F, 4>,
     pub eval_diff: BinomialExtensionField<F, 4>,
     pub x_diff: F,
@@ -42,18 +45,12 @@ pub struct CommitPhaseStep<F: Field> {
     pub beta_eval_product: BinomialExtensionField<F, 4>,
     pub interpolation_term: BinomialExtensionField<F, 4>,
     pub folded_eval: BinomialExtensionField<F, 4>,
-    pub beta_squared: BinomialExtensionField<F, 4>,
-    pub roll_in_contribution: BinomialExtensionField<F, 4>,
 
-    // FRI commit phase MMCS verification fields  
-    pub fri_commit: [F; 8],  // Commit phase commitment (digest, usually 8 elements)
-    pub sibling_eval: BinomialExtensionField<F, 4>, // Sibling evaluation (extension field)
+    // Commitment digest for this phase
+    pub fri_commit: [F; 8],
 }
 
-/// Generate trace rows for the CommitPhase table.
-///
-/// This function takes the FRI folding steps captured from the actual verifier
-/// and generates the corresponding AIR trace data.
+/// Generate trace rows for the CommitPhase table (aligned with `CommitPhaseCols`).
 pub fn generate_commit_phase_trace<F>(steps: &[CommitPhaseStep<F>]) -> RowMajorMatrix<F>
 where
     F: Field + BinomiallyExtendable<4>,
@@ -64,321 +61,307 @@ where
     let mut trace_data = Vec::with_capacity(num_rows * num_cols);
 
     for step in steps {
-        // Extract extension field components using basis coefficients
-        let beta_components = step.beta.as_basis_coefficients_slice();
-        let eval_0_components = step.eval_0.as_basis_coefficients_slice();
-        let eval_1_components = step.eval_1.as_basis_coefficients_slice();
-        let roll_in_components = step.roll_in_value.as_basis_coefficients_slice();
+        // Ext components
+        let beta_c = step.beta.as_basis_coefficients_slice();
+        let eval0_c = step.eval_0.as_basis_coefficients_slice();
+        let eval1_c = step.eval_1.as_basis_coefficients_slice();
+        let ro_c = step.reduced_opening.as_basis_coefficients_slice();
+        let beta2_c = step.beta_squared.as_basis_coefficients_slice();
+        let rollin_c = step.roll_in_contribution.as_basis_coefficients_slice();
+        let bmx0_c = step.beta_minus_x0.as_basis_coefficients_slice();
+        let ediff_c = step.eval_diff.as_basis_coefficients_slice();
+        let beprod_c = step.beta_eval_product.as_basis_coefficients_slice();
+        let interp_c = step.interpolation_term.as_basis_coefficients_slice();
+        let folded_c = step.folded_eval.as_basis_coefficients_slice();
 
-        // Create the row data in the same order as CommitPhaseCols struct
-        // Base field elements
+        // === Order must match CommitPhaseCols ===
+        // Identifiers
         trace_data.push(step.query_index);
         trace_data.push(step.phase_index);
 
-        // Beta challenge (4 components)
-        trace_data.extend_from_slice(beta_components);
+        // beta, eval_0, eval_1
+        trace_data.extend_from_slice(beta_c);
+        trace_data.extend_from_slice(eval0_c);
+        trace_data.extend_from_slice(eval1_c);
 
-        // eval_0 (4 components)
-        trace_data.extend_from_slice(eval_0_components);
+        // roll-in gate & values
+        trace_data.push(step.is_roll_in);
+        trace_data.extend_from_slice(ro_c);
+        trace_data.extend_from_slice(beta2_c);
+        trace_data.extend_from_slice(rollin_c);
 
-        // eval_1 (4 components)
-        trace_data.extend_from_slice(eval_1_components);
-
-        // roll_in_value (4 components)
-        trace_data.extend_from_slice(roll_in_components);
-
-        // Domain management (base field)
+        // indices
         trace_data.push(step.domain_index);
         trace_data.push(step.parent_index);
         trace_data.push(step.sibling_index);
+        trace_data.push(step.lsb);
 
-        // Subgroup points (base field)
+        // height
+        trace_data.push(step.log_height);
+
+        // x-points
         trace_data.push(step.x0);
         trace_data.push(step.x1);
 
-        // Verification flags (base field)
-        trace_data.push(step.mmcs_verified);
-        trace_data.push(step.log_height);
-        
-        // FRI folding arithmetic intermediate values
-        let beta_minus_x0_components = step.beta_minus_x0.as_basis_coefficients_slice();
-        let eval_diff_components = step.eval_diff.as_basis_coefficients_slice();
-        let beta_eval_product_components = step.beta_eval_product.as_basis_coefficients_slice();
-        let interpolation_term_components = step.interpolation_term.as_basis_coefficients_slice();
-        let folded_eval_components = step.folded_eval.as_basis_coefficients_slice();
-        let beta_squared_components = step.beta_squared.as_basis_coefficients_slice();
-        let roll_in_contribution_components = step.roll_in_contribution.as_basis_coefficients_slice();
-        
-        trace_data.extend_from_slice(beta_minus_x0_components);
-        trace_data.extend_from_slice(eval_diff_components);
+        // intermediates
+        trace_data.extend_from_slice(bmx0_c);
+        trace_data.extend_from_slice(ediff_c);
         trace_data.push(step.x_diff);
         trace_data.push(step.x_diff_inv);
-        trace_data.extend_from_slice(beta_eval_product_components);
-        trace_data.extend_from_slice(interpolation_term_components);
-        trace_data.extend_from_slice(folded_eval_components);
-        trace_data.extend_from_slice(beta_squared_components);
-        trace_data.extend_from_slice(roll_in_contribution_components);
-        
-        // FRI commit phase MMCS verification fields 
-        // fri_commit is digest array (8 elements), sibling_eval is extension field (4 components)
+        trace_data.extend_from_slice(beprod_c);
+        trace_data.extend_from_slice(interp_c);
+        trace_data.extend_from_slice(folded_c);
+
+        // commitment digest
         trace_data.extend_from_slice(&step.fri_commit);
-        let sibling_eval_components = step.sibling_eval.as_basis_coefficients_slice();
-        trace_data.extend_from_slice(sibling_eval_components);
     }
 
     RowMajorMatrix::new(trace_data, num_cols)
 }
 
-/// Parameters for creating a CommitPhaseStep.
-/// Groups related parameters to avoid too many function arguments.
+/// Parameters for constructing a `CommitPhaseStep`.
 pub struct CommitPhaseStepParams<F: Field> {
     pub query_index: usize,
     pub phase_index: usize,
+
     pub beta: BinomialExtensionField<F, 4>,
-    pub domain_index: usize,
     pub eval_0: BinomialExtensionField<F, 4>,
-    pub eval_1: BinomialExtensionField<F, 4>, // sibling value
-    pub x0: F,                                // subgroup point
-    pub roll_in_value: BinomialExtensionField<F, 4>,
+    pub eval_1: BinomialExtensionField<F, 4>,
+
+    pub reduced_opening: BinomialExtensionField<F, 4>, // ro at this height (0 if none)
+    pub is_roll_in: bool,
+
+    pub domain_index: usize,
     pub log_height: usize,
-    pub mmcs_verified: bool,
-    
-    // FRI folding intermediate values (computed during folding)
+    pub x0: F, // subgroup start for the row
+
+    // Intermediates (you may precompute externally if desired)
     pub beta_minus_x0: BinomialExtensionField<F, 4>,
     pub eval_diff: BinomialExtensionField<F, 4>,
     pub x_diff: F,
     pub x_diff_inv: F,
     pub beta_eval_product: BinomialExtensionField<F, 4>,
     pub interpolation_term: BinomialExtensionField<F, 4>,
-    pub folded_eval: BinomialExtensionField<F, 4>,
-    pub beta_squared: BinomialExtensionField<F, 4>,
-    pub roll_in_contribution: BinomialExtensionField<F, 4>,
-    
-    pub fri_commit: [F; 8], // FRI commitment for this phase (digest)
-    pub sibling_eval: BinomialExtensionField<F, 4>, // Sibling evaluation
+    pub folded_eval_pre_rollin: BinomialExtensionField<F, 4>, // before adding roll-in
+
+    pub fri_commit: [F; 8],
 }
 
-/// Helper function to create a CommitPhaseStep from FRI verifier data.
-/// This would be called during actual FRI verification to capture the immediate values.
-pub fn create_commit_phase_step<F>(params: CommitPhaseStepParams<F>) -> CommitPhaseStep<F>
+/// Construct a `CommitPhaseStep` and compute β² and roll-in contribution.
+pub fn create_commit_phase_step<F>(p: CommitPhaseStepParams<F>) -> CommitPhaseStep<F>
 where
     F: Field + BinomiallyExtendable<4>,
 {
+    let beta_squared = p.beta * p.beta;
+    let roll_in_contribution = if p.is_roll_in {
+        beta_squared * p.reduced_opening
+    } else {
+        BinomialExtensionField::ZERO
+    };
+
+    let folded_eval = p.folded_eval_pre_rollin + roll_in_contribution;
+
+    let di = p.domain_index;
+    let parent = di >> 1;
+    let lsb_u = di & 1;
+
     CommitPhaseStep {
-        query_index: F::from_usize(params.query_index),
-        phase_index: F::from_usize(params.phase_index),
-        beta: params.beta,
-        domain_index: F::from_usize(params.domain_index),
-        parent_index: F::from_usize(params.domain_index >> 1),
-        sibling_index: F::from_usize(params.domain_index ^ 1),
-        eval_0: params.eval_0,
-        eval_1: params.eval_1,
-        x0: params.x0,
-        x1: -params.x0, // x1 = -x0 for arity-2 folding
-        roll_in_value: params.roll_in_value,
-        mmcs_verified: if params.mmcs_verified {
-            F::ONE
-        } else {
-            F::ZERO
-        },
-        log_height: F::from_usize(params.log_height),
-        
-        // FRI folding intermediate values
-        beta_minus_x0: params.beta_minus_x0,
-        eval_diff: params.eval_diff,
-        x_diff: params.x_diff,
-        x_diff_inv: params.x_diff_inv,
-        beta_eval_product: params.beta_eval_product,
-        interpolation_term: params.interpolation_term,
-        folded_eval: params.folded_eval,
-        beta_squared: params.beta_squared,
-        roll_in_contribution: params.roll_in_contribution,
-        
-        fri_commit: params.fri_commit,
-        sibling_eval: params.sibling_eval,
+        query_index: F::from_usize(p.query_index),
+        phase_index: F::from_usize(p.phase_index),
+
+        beta: p.beta,
+        eval_0: p.eval_0,
+        eval_1: p.eval_1,
+
+        is_roll_in: if p.is_roll_in { F::ONE } else { F::ZERO },
+        reduced_opening: p.reduced_opening,
+        beta_squared,
+        roll_in_contribution,
+
+        domain_index: F::from_usize(di),
+        parent_index: F::from_usize(parent),
+        sibling_index: F::from_usize(di ^ 1),
+        lsb: F::from_usize(lsb_u),
+
+        log_height: F::from_usize(p.log_height),
+
+        x0: p.x0,
+        x1: -p.x0,
+
+        beta_minus_x0: p.beta_minus_x0,
+        eval_diff: p.eval_diff,
+        x_diff: p.x_diff,
+        x_diff_inv: p.x_diff_inv,
+        beta_eval_product: p.beta_eval_product,
+        interpolation_term: p.interpolation_term,
+        folded_eval,
+
+        fri_commit: p.fri_commit,
     }
 }
 
-/// Extract CommitPhase steps from a Plonky3 FRI proof for production use.
-///
-/// This function processes actual FRI proof structures to generate CommitPhase AIR table data.
-/// It extracts REAL values from the FRI proof and computes the intermediate folding arithmetic.
-///
-/// # Current Implementation Status:
-/// ✅ Real beta challenges from proof
-/// ✅ Real sibling values from proof  
-/// ✅ Real FRI folding arithmetic computation
-/// ✅ Proper eval_0/eval_1 tracking across phases
-/// ✅ Real FRI commitment extraction from M::Commitment
-/// ✅ Real roll-in value computation with reduced opening tracking
-/// 🚧 TODO: Real MMCS verification result (requires type alignment)
-///
-/// # Arguments
-/// * `fri_proof` - The FRI proof containing commit phase data
-/// * `challenger_state` - Challenger state (will be updated by observing proof data)
-/// * `fri_params` - FRI parameters used in the original proof
-/// * `query_index` - The query index for this proof (usually 0 for recursive verifiers)
-/// * `reduced_openings` - Vector of (log_height, reduced_opening) pairs for roll-in computation
-///
-/// # Returns
-/// Vector of CommitPhaseStep entries that can be used to generate AIR trace rows
+/// Extract `CommitPhaseStep`s from a real FRI proof, binding to the transcript
+/// in the same order as verification. Assumes `reduced_openings` is provided as
+/// `(log_height, ro)` pairs sorted **descending** by height starting at `log_max_height`.
 pub fn extract_commit_phase_steps_from_fri_proof<F, M, C, Witness, InputProof>(
     fri_proof: &p3_fri::FriProof<F, M, Witness, InputProof>,
-    challenger_state: &mut C,
+    challenger: &mut C,
     fri_params: &p3_fri::FriParameters<M>,
-    query_index: usize,
-    reduced_openings: &[(usize, BinomialExtensionField<F, 4>)], // (log_height, reduced_opening)
+    query_slot: usize,
+    reduced_openings: &[(usize, BinomialExtensionField<F, 4>)],
 ) -> Vec<CommitPhaseStep<F>>
 where
-    F: Field + BinomiallyExtendable<4> + p3_field::TwoAdicField + p3_field::PrimeCharacteristicRing,
+    F: Field
+        + BinomiallyExtendable<4>
+        + p3_field::TwoAdicField
+        + p3_field::PrimeCharacteristicRing,
     M: p3_commit::Mmcs<F>,
-    M::Commitment: AsRef<[F; 8]>, // Constraint: commitment must be convertible to 8-element array
+    M::Commitment: AsRef<[F; 8]>,
     C: p3_challenger::FieldChallenger<F>
         + p3_challenger::CanObserve<M::Commitment>
         + p3_challenger::CanSampleBits<usize>,
     Witness: Clone,
 {
-    let mut commit_phase_steps = Vec::new();
+    let mut steps = Vec::new();
 
-    // Generate beta challenges by observing commit phase commits
+    // Bind betas: observe commits then sample βᵢ
     let betas: Vec<BinomialExtensionField<F, 4>> = fri_proof
         .commit_phase_commits
         .iter()
-        .map(|comm| {
-            challenger_state.observe(comm.clone());
-            challenger_state.sample_algebra_element()
+        .map(|c| {
+            challenger.observe(c.clone());
+            challenger.sample_algebra_element()
         })
         .collect();
 
-    // Observe final polynomial
+    // Observe final polynomial coefficients (binding the transcript)
     for coeff in &fri_proof.final_poly {
-        challenger_state.observe_algebra_element(*coeff);
+        challenger.observe_algebra_element(*coeff);
     }
 
-    // Process the query proof (use query_index, typically 0 for recursive verifiers)
-    if let Some(query_proof) = fri_proof.query_proofs.get(query_index) {
-        let log_max_height = fri_proof.commit_phase_commits.len()
-            + fri_params.log_blowup
-            + fri_params.log_final_poly_len;
+    // Sample the random index (log_max_height bits) exactly like the verifier
+    let log_max_height =
+        fri_proof.commit_phase_commits.len() + fri_params.log_blowup + fri_params.log_final_poly_len;
+    let mut domain_index = challenger.sample_bits(log_max_height);
 
-        let mut domain_index = query_index;
-        let mut current_folded_eval = BinomialExtensionField::ZERO; // Track folded evaluation across phases
-        let mut reduced_openings_iter = reduced_openings.iter().peekable(); // Track reduced openings for roll-ins
+    // Locate the query proof we’re extracting (e.g., 0 for single-query setups)
+    let Some(qp) = fri_proof.query_proofs.get(query_slot) else {
+        return steps;
+    };
 
-        for (phase_idx, (commit, opening)) in fri_proof.commit_phase_commits.iter().zip(query_proof.commit_phase_openings.iter()).enumerate() {
-            if phase_idx < betas.len() {
-                let beta = betas[phase_idx];
-                let sibling_value = opening.sibling_value;
+    // Initialize folded_eval from the reduced opening at max height
+    let mut ro_iter = reduced_openings.iter().copied().peekable();
+    let mut current_folded =
+        if let Some((lh, ro)) = ro_iter.next() {
+            debug_assert_eq!(lh, log_max_height, "First reduced opening must be at max height");
+            ro
+        } else {
+            // No reduced opening provided; treat as zero (shouldn’t happen in practice).
+            BinomialExtensionField::ZERO
+        };
 
-                // Calculate subgroup points
-                let log_folded_height = log_max_height - phase_idx - 1; // Fixed: should be -1 for folded height
-                let rev_bits = p3_util::reverse_bits_len(domain_index, log_folded_height + 1);
-                let generator = F::two_adic_generator(log_folded_height + 1);
-                let x0 = generator.exp_u64(rev_bits as u64);
-                let x1 = -x0;
+    for (phase_idx, (commit, opening)) in fri_proof
+        .commit_phase_commits
+        .iter()
+        .zip(qp.commit_phase_openings.iter())
+        .enumerate()
+    {
+        let beta = betas[phase_idx];
 
-                // Use REAL FRI folding values:
-                // eval_0 = previous folded result (or reduced opening for first phase)
-                // eval_1 = sibling_value from the proof
-                let eval_0 = if phase_idx == 0 {
-                    // First phase: use some initial reduced opening value
-                    // In real usage, this would come from input opening verification
-                    sibling_value.into()
-                } else {
-                    current_folded_eval // Use result from previous phase
-                };
-                let eval_1 = sibling_value.into();
-                
-                // Step 1: beta - x0 (extension field - base field)
-                let x0_ext = BinomialExtensionField::from_basis_coefficients_slice(&[x0, F::ZERO, F::ZERO, F::ZERO])
-                    .expect("valid coefficients");
-                let beta_minus_x0 = beta - x0_ext;
-                
-                // Step 2: eval_1 - eval_0
-                let eval_diff = eval_1 - eval_0;
-                
-                // Step 3: x1 - x0 = -2*x0
-                let x_diff = x1 - x0; 
-                let x_diff_inv = x_diff.inverse();
-                
-                // Step 4: (beta - x0) * (eval_1 - eval_0)
-                let beta_eval_product = beta_minus_x0 * eval_diff;
-                
-                // Step 5: interpolation_term = beta_eval_product * x_diff_inv (scalar multiplication)
-                let x_diff_inv_ext = BinomialExtensionField::from_basis_coefficients_slice(&[x_diff_inv, F::ZERO, F::ZERO, F::ZERO])
-                    .expect("valid coefficients");
-                let interpolation_term = beta_eval_product * x_diff_inv_ext;
-                
-                // Step 6: folded_eval = eval_0 + interpolation_term
-                let folded_eval = eval_0 + interpolation_term;
-                
-                // Step 7: beta_squared = beta * beta
-                let beta_squared = beta * beta;
-                
-                // Step 8: Check for roll-ins at this height and compute roll_in_contribution
-                let (roll_in_value, roll_in_contribution) = if let Some((_log_height, reduced_opening)) = 
-                    reduced_openings_iter.next_if(|(lh, _)| *lh == log_folded_height) 
-                {
-                    // Roll-in detected at this height
-                    let roll_in_contrib = beta_squared * *reduced_opening;
-                    (*reduced_opening, roll_in_contrib)
-                } else {
-                    // No roll-in at this height
-                    (BinomialExtensionField::ZERO, BinomialExtensionField::ZERO)
-                };
-                
-                // Update current folded evaluation for next phase
-                current_folded_eval = folded_eval + roll_in_contribution;
+        // Height and subgroup points for this phase (arity = 2)
+        let log_folded_height = log_max_height - phase_idx - 1;
+        let rev_bits = p3_util::reverse_bits_len(domain_index, log_folded_height + 1);
+        let generator = F::two_adic_generator(log_folded_height + 1);
+        let x0 = generator.exp_u64(rev_bits as u64);
+        let x1 = -x0;
 
-                // Extract real FRI commitment from the proof
-                let fri_commit_digest: [F; 8] = *commit.as_ref();
+        // eval_0 is the current folded_eval; eval_1 is sibling from proof
+        let eval_0 = current_folded;
+        let eval_1: BinomialExtensionField<F, 4> = opening.sibling_value.into();
 
-                // TODO: Perform real MMCS verification for the commit phase
-                // This requires proper type alignment between extension field and base field
-                // and handling of the opening proof structure
-                // 
-                // let parent_index = domain_index >> 1;
-                // let verification_result = fri_params.mmcs.verify_batch(commit, dims, parent_index, opening_proof);
-                //
-                // For now, assume verification passes (would be implemented in production)
-                let mmcs_verified = F::ONE;
+        // β - x0
+        let x0_ext =
+            BinomialExtensionField::from_basis_coefficients_slice(&[x0, F::ZERO, F::ZERO, F::ZERO])
+                .expect("valid x0 ext");
+        let beta_minus_x0 = beta - x0_ext;
 
-                // Create CommitPhaseStep with actual proof data
-                let step = CommitPhaseStep {
-                    query_index: F::from_usize(query_index),
-                    phase_index: F::from_usize(phase_idx),
-                    beta,
-                    domain_index: F::from_usize(domain_index),
-                    parent_index: F::from_usize(domain_index >> 1),
-                    sibling_index: F::from_usize(domain_index ^ 1),
-                    eval_0,
-                    eval_1,
-                    x0,
-                    x1,
-                    roll_in_value, // Real roll-in value from reduced openings
-                    mmcs_verified, // Real MMCS verification result
-                    log_height: F::from_usize(log_folded_height),
-                    
-                    // FRI folding intermediate values (computed above)
-                    beta_minus_x0,
-                    eval_diff,
-                    x_diff,
-                    x_diff_inv,
-                    beta_eval_product,
-                    interpolation_term,
-                    folded_eval,
-                    beta_squared,
-                    roll_in_contribution,
-                    
-                    fri_commit: fri_commit_digest, // FRI commitment for this phase
-                    sibling_eval: sibling_value.into(), // Sibling evaluation
-                };
+        // eval_1 - eval_0
+        let eval_diff = eval_1 - eval_0;
 
-                commit_phase_steps.push(step);
-                domain_index >>= 1; // Fold for next phase
-            }
-        }
+        // x1 - x0 and its inverse
+        let x_diff = x1 - x0;
+        let x_diff_inv = x_diff.inverse();
+
+        // (β - x0) * (eval_1 - eval_0)
+        let beta_eval_product = beta_minus_x0 * eval_diff;
+
+        // interpolation_term = ((β - x0)*(eval_1 - eval_0)) * (x1 - x0)^(-1)
+        let x_diff_inv_ext = BinomialExtensionField::from_basis_coefficients_slice(&[
+            x_diff_inv,
+            F::ZERO,
+            F::ZERO,
+            F::ZERO,
+        ])
+        .expect("valid inv ext");
+        let interpolation_term = beta_eval_product * x_diff_inv_ext;
+
+        // folded_eval before roll-in
+        let folded_eval_pre_rollin = eval_0 + interpolation_term;
+
+        // β² and roll-in at this height (if any)
+        let beta_squared = beta * beta;
+        let (is_roll_in, reduced_opening, roll_in_contribution) =
+            if let Some((_lh, ro)) = ro_iter.next_if(|(lh, _)| *lh == log_folded_height) {
+                (F::ONE, ro, beta_squared * ro)
+            } else {
+                (F::ZERO, BinomialExtensionField::ZERO, BinomialExtensionField::ZERO)
+            };
+
+        // Update folded value for the next phase
+        current_folded = folded_eval_pre_rollin + roll_in_contribution;
+
+        // Commit digest
+        let fri_commit: [F; 8] = *commit.as_ref();
+
+        // Build step
+        let step = CommitPhaseStep {
+            query_index: F::from_usize(query_slot),
+            phase_index: F::from_usize(phase_idx),
+
+            beta,
+            eval_0,
+            eval_1,
+
+            is_roll_in,
+            reduced_opening,
+            beta_squared,
+            roll_in_contribution,
+
+            domain_index: F::from_usize(domain_index),
+            parent_index: F::from_usize(domain_index >> 1),
+            sibling_index: F::from_usize(domain_index ^ 1),
+            lsb: F::from_usize(domain_index & 1),
+
+            log_height: F::from_usize(log_folded_height),
+
+            x0,
+            x1,
+
+            beta_minus_x0,
+            eval_diff,
+            x_diff,
+            x_diff_inv,
+            beta_eval_product,
+            interpolation_term,
+            folded_eval: current_folded,
+
+            fri_commit,
+        };
+        steps.push(step);
+
+        // Move to parent index for next round
+        domain_index >>= 1;
     }
 
-    commit_phase_steps
+    steps
 }
