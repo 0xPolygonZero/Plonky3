@@ -162,6 +162,19 @@ fn extract_commit_phase_steps_from_opening_proof(
             roll_in_value: Val::ZERO.into(),
             mmcs_verified: Val::ONE,
             log_height: Val::from_usize(log_folded_height),
+            // FRI folding intermediate values (computed to satisfy constraints)
+            beta_minus_x0: beta - Challenge::from(x0),
+            eval_diff: sibling - sibling, // eval_1 - eval_0 (both are sibling in this test)
+            x_diff: -x0 - x0, // x1 - x0 = -x0 - x0 = -2*x0
+            x_diff_inv: (-x0 - x0).inverse(), // (x1 - x0)^(-1)
+            beta_eval_product: (beta - Challenge::from(x0)) * Challenge::ZERO, // * eval_diff which is 0
+            interpolation_term: Challenge::ZERO, // beta_eval_product * x_diff_inv = 0 * anything = 0
+            folded_eval: sibling, // eval_0 + interpolation_term = sibling + 0
+            beta_squared: beta * beta,
+            roll_in_contribution: Challenge::ZERO, // beta_squared * roll_in_value (which is 0)
+            
+            fri_commit: *opening_proof.commit_phase_commits[phase_idx].as_ref(), // Real FRI commitment digest
+            sibling_eval: sibling, // Same as eval_1 for this test
         };
 
         commit_phase_steps.push(step);

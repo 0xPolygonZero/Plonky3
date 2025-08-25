@@ -1,4 +1,4 @@
-//! An AIR implementation for the FRI verifier used in recursive proof systems.
+//! FRI Verifier AIR implementation for recursive proof systems.
 
 #![no_std]
 
