@@ -1,6 +1,6 @@
 use p3_field::Field;
 
-use crate::circuit_builder::gates::event::Table;
+use crate::prover::tables::Table;
 
 pub struct Asic<F> {
     pub asic: Vec<Box<dyn Table<F>>>,

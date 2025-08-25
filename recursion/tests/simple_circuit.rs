@@ -5,11 +5,11 @@ use p3_challenger::DuplexChallenger;
 use p3_commit::testing::TrivialPcs;
 use p3_dft::Radix2DitParallel;
 use p3_field::extension::BinomialExtensionField;
-use p3_recursion::air::alu::cols::{AddTable, SubTable};
 use p3_recursion::air::asic::Asic;
 use p3_recursion::circuit_builder::circuit_builder::{CircuitBuilder, CircuitError};
 use p3_recursion::circuit_builder::gates::arith_gates::{AddGate, SubGate};
 use p3_recursion::prover::prove;
+use p3_recursion::prover::tables::{AddTable, SubTable, WitnessTable};
 use p3_recursion::verifier::verify;
 use p3_uni_stark::StarkConfig;
 use rand::SeedableRng;
@@ -49,14 +49,22 @@ pub fn test_simple_circuit() -> Result<(), CircuitError> {
     SubGate::add_to_circuit(&mut builder, c, d, e);
 
     let asic = Asic {
-        asic: vec![Box::new(AddTable {}), Box::new(SubTable {})],
+        asic: vec![
+            Box::new(AddTable {}),
+            Box::new(SubTable {}),
+            Box::new(WitnessTable {}),
+        ],
     };
 
     builder.set_wire_value(a, Value::new(10))?;
     builder.set_wire_value(b, Value::new(5))?;
     builder.set_wire_value(d, Value::new(2))?;
 
+    println!("builder wires: {:?}", builder.wires());
+
     let all_events = builder.generate()?;
+
+    println!("builder wires: {:?}", builder.wires());
 
     let proof = prove(&config, asic, all_events);
 

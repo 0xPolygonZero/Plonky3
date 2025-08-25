@@ -1,3 +1,5 @@
+pub mod tables;
+
 use p3_uni_stark::{Proof, StarkGenericConfig, Val, prove as base_prove};
 
 use crate::air::AluAir;

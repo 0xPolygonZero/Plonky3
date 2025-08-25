@@ -5,11 +5,34 @@ use p3_field::Field;
 use p3_matrix::dense::RowMajorMatrix;
 
 use crate::air::AluAir;
-use crate::circuit_builder::gates::event::{AllEvents, Table};
 
 pub struct AddEvent<F, const REPETITIONS: usize = 1>(pub FieldOpEvent<F, REPETITIONS>);
-pub struct SubEvent<F, const REPETITIONS: usize = 1>(pub FieldOpEvent<F>);
+pub struct SubEvent<F, const REPETITIONS: usize = 1>(pub FieldOpEvent<F, REPETITIONS>);
 pub struct MulEvent<F, const REPETITIONS: usize = 1>(pub FieldOpEvent<F>);
+pub struct RomEvent<F>(pub usize, pub F);
+
+impl<F: Field> RomEvent<F> {
+    pub fn generate_trace<'a, I: Iterator<Item = &'a RomEvent<F>>>(
+        events: I,
+        events_len: usize,
+    ) -> RowMajorMatrix<F> {
+        let n_padded = events_len.next_power_of_two();
+        let mut trace = RowMajorMatrix::new(
+            F::zero_vec(n_padded * 1), // 1 column for witness values
+            1,
+        );
+
+        let (prefix, rows, suffix) = unsafe { trace.values.align_to_mut::<[F; 1]>() };
+        assert!(prefix.is_empty(), "Alignment should match");
+        assert!(suffix.is_empty(), "Alignment should match");
+        assert_eq!(rows.len(), events_len);
+
+        for (i, RomEvent(col, val)) in events.enumerate() {
+            rows[i][0] = *val; // Only one column
+        }
+        trace
+    }
+}
 
 /// Represents an event in the field operation trace.
 pub struct FieldOpEvent<T, const REPETITIONS: usize = 1> {
@@ -22,7 +45,7 @@ pub struct FieldOpEvent<T, const REPETITIONS: usize = 1> {
 }
 
 impl<F: Field, const REPETITIONS: usize> FieldOpEvent<F, REPETITIONS> {
-    fn generate_trace<'a, I: Iterator<Item = &'a FieldOpEvent<F, REPETITIONS>>>(
+    pub fn generate_trace<'a, I: Iterator<Item = &'a FieldOpEvent<F, REPETITIONS>>>(
         events: I,
         events_len: usize,
     ) -> RowMajorMatrix<F> {
@@ -50,38 +73,6 @@ impl<F: Field, const REPETITIONS: usize> FieldOpEvent<F, REPETITIONS> {
             }
         }
         trace
-    }
-}
-
-pub struct AddTable;
-impl<F: Field> Table<F> for AddTable {
-    fn generate_trace(&self, all_events: &AllEvents<F>) -> RowMajorMatrix<F> {
-        FieldOpEvent::generate_trace(
-            all_events.add_events.iter().map(|x| &x.0),
-            all_events.add_events.len(),
-        )
-    }
-}
-
-#[derive(PartialEq, Eq, Hash)]
-pub struct SubTable;
-impl<F: Field> Table<F> for SubTable {
-    fn generate_trace(&self, all_events: &AllEvents<F>) -> RowMajorMatrix<F> {
-        FieldOpEvent::generate_trace(
-            all_events.sub_events.iter().map(|x| &x.0),
-            all_events.sub_events.len(),
-        )
-    }
-}
-
-#[derive(PartialEq, Eq, Hash)]
-pub struct MulTable;
-impl<F: Field> Table<F> for MulTable {
-    fn generate_trace(&self, all_events: &AllEvents<F>) -> RowMajorMatrix<F> {
-        FieldOpEvent::generate_trace(
-            all_events.mul_events.iter().map(|x| &x.0),
-            all_events.mul_events.len(),
-        )
     }
 }
 

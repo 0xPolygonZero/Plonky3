@@ -1,5 +1,6 @@
 use p3_field::Field;
 
+use crate::air::alu::cols::RomEvent;
 use crate::circuit_builder::gates::event::AllEvents;
 use crate::circuit_builder::gates::gate::Gate;
 
@@ -63,10 +64,22 @@ impl<F: Field> CircuitBuilder<F> {
             add_events: Vec::new(),
             sub_events: Vec::new(),
             mul_events: Vec::new(),
+            witness_events: Vec::new(),
         };
+
+        // Generaete events for all gates
         for gate in gate_instances.iter_mut() {
             gate.generate(self, &mut all_events)?;
         }
+
+        // Generate the witeness events from the wire values
+        all_events.witness_events = self
+            .wires
+            .iter()
+            .enumerate()
+            .filter_map(|(i, v)| v.map(|val| RomEvent(i, val)))
+            .collect(); // TODO: avoid the intermediate allocation?
+
         Ok(all_events)
     }
 }
