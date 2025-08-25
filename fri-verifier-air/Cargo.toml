@@ -16,6 +16,11 @@ p3-matrix.workspace = true
 p3-maybe-rayon.workspace = true
 p3-util.workspace = true
 
+# Dependencies for FRI proof processing in production
+p3-fri.workspace = true
+p3-challenger.workspace = true
+p3-commit.workspace = true
+
 rand.workspace = true
 tracing.workspace = true
 

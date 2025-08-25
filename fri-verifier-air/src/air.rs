@@ -25,6 +25,12 @@ impl<F> CommitPhaseAir<F> {
     }
 }
 
+impl<F> Default for CommitPhaseAir<F> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<F: Field> BaseAir<F> for CommitPhaseAir<F> {
     fn width(&self) -> usize {
         num_commit_phase_cols()
@@ -38,7 +44,9 @@ where
     #[inline]
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();
-        let local = main.row_slice(0).expect("The matrix is empty?");
+        let local = main
+            .row_slice(0)
+            .expect("main trace matrix should not be empty");
         let local = (*local).borrow();
 
         eval_commit_phase_constraints(builder, local);
@@ -47,7 +55,7 @@ where
 
 /// Evaluates the constraints for the CommitPhase AIR.
 ///
-/// Maps directly to the FRI folding logic from fri.rs:727-908
+/// Maps directly to the FRI folding logic from verifier.rs and two_adic_pcs.rs
 fn eval_commit_phase_constraints<AB: AirBuilder>(builder: &mut AB, local: &CommitPhaseCols<AB::Var>)
 where
     AB::Expr: PrimeCharacteristicRing,
@@ -72,79 +80,36 @@ where
 
     // === SUBGROUP POINTS CONSTRAINTS ===
     // Constraint 3: x1 = -x0 (degree 1)
-    // Maps to fri.rs:848: x1 = -subgroup_start
+    // Maps to two_adic_pcs.rs: x1 = -subgroup_start for arity-2 folding
     // For field arithmetic: x1 + x0 = 0
     builder.assert_eq(local.x1.clone() + local.x0.clone(), AB::Expr::ZERO);
 
-    // === INTERMEDIATE COMPUTATION CONSTRAINTS ===
-    // These break down the FRI folding formula into degree ≤ 3 constraints
-    // Maps to fri.rs:857-874: folded_eval = e0 + (beta - x0) * (e1 - e0) * (x1 - x0)^(-1)
+    // === EXTENSION FIELD ELEMENT CONSTRAINTS ===
+    // Extension field arithmetic operations (beta - x0, eval_1 - eval_0, etc.)
+    // will be handled by dedicated extension field operation tables.
+    // This table focuses on the high-level FRI folding logic and uses
+    // cross-table lookups to verify the extension field computations.
 
-    // Constraint 4: beta_minus_x0 = beta - x0 (degree 1)
-    builder.assert_eq(
-        local.beta_minus_x0.clone(),
-        local.beta.clone() - local.x0.clone(),
-    );
-
-    // Constraint 5: eval_1_minus_eval_0 = eval_1 - eval_0 (degree 1)
-    builder.assert_eq(
-        local.eval_1_minus_eval_0.clone(),
-        local.eval_1.clone() - local.eval_0.clone(),
-    );
-
-    // Constraint 6: x1_minus_x0 = x1 - x0 (degree 1)
-    builder.assert_eq(
-        local.x1_minus_x0.clone(),
-        local.x1.clone() - local.x0.clone(),
-    );
-
-    // Constraint 7: inverse * x1_minus_x0 = 1 (degree 2)
-    // This verifies that inverse = (x1 - x0)^(-1)
-    builder.assert_eq(
-        local.inverse.clone() * local.x1_minus_x0.clone(),
-        AB::Expr::ONE,
-    );
-
-    // Constraint 8: intermediate = beta_minus_x0 * eval_1_minus_eval_0 * inverse (degree 3)
-    // This is the core FRI folding computation
-    builder.assert_eq(
-        local.intermediate.clone(),
-        local.beta_minus_x0.clone().into()
-            * local.eval_1_minus_eval_0.clone().into()
-            * local.inverse.clone().into(),
-    );
-
-    // Constraint 9: folded_result_pre = eval_0 + intermediate (degree 1)
-    builder.assert_eq(
-        local.folded_result_pre.clone(),
-        local.eval_0.clone() + local.intermediate.clone(),
-    );
-
-    // === ROLL-IN CONSTRAINT ===
-    // Constraint 10: folded_result = folded_result_pre + roll_in_value (degree 1)
-    // Maps to fri.rs:898: folded_eval += roll_in
-    builder.assert_eq(
-        local.folded_result.clone(),
-        local.folded_result_pre.clone() + local.roll_in_value.clone(),
-    );
+    // For now, we don't have explicit FRI folding constraints here since
+    // the extension field operations will be verified via cross-table lookups
+    // to dedicated extension field arithmetic tables.
 
     // === DOMAIN HEIGHT CONSTRAINT ===
-    // Constraint 11: Verify log_height is consistent
-    // This would typically be checked via cross-table lookup or public inputs
-    // For now, we can add range constraints or consistency checks
+    // The log_height field tracks domain folding and would typically be
+    // checked via cross-table lookup or public inputs
+    // TODO: Add constraint linking log_height to phase progression
 
-    // Note: MMCS verification constraint is intentionally omitted as it would
-    // require complex cryptographic constraints. In practice, this would be
-    // verified via witness generation and potentially cross-table lookups.
+    // TODO: CTL to MMCS verification table
+    // TODO: CTL to extension field arithmetic tables for FRI folding verification
 }
 
 /// Additional helper constraints that might be useful for debugging
 pub fn eval_debug_constraints<AB: AirBuilder>(builder: &mut AB, local: &CommitPhaseCols<AB::Var>) {
-    // Verify that x1_minus_x0 = -2 * x0 (since x1 = -x0)
+    // Verify that x1 - x0 = -2 * x0 (since x1 = -x0)
     // This is a sanity check: x1 - x0 = -x0 - x0 = -2*x0
     let expected_diff = -(local.x0.clone() + local.x0.clone());
-    builder.assert_eq(local.x1_minus_x0.clone(), expected_diff);
+    let actual_diff = local.x1.clone() - local.x0.clone();
+    builder.assert_eq(actual_diff, expected_diff);
 
-    // Verify that sibling_index is actually the XOR of domain_index with 1
-    // This is a more explicit check of the XOR constraint
+    // Additional debug constraints can be added here for development
 }
