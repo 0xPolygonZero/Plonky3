@@ -35,6 +35,7 @@ pub trait MontyParametersAVX2 {
 /// Vectorized AVX2 implementation of `MontyField31<FP>` arithmetic.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[repr(transparent)] // This is needed to make `transmute`s safe.
+#[must_use]
 pub struct PackedMontyField31AVX2<PMP: PackedMontyParameters>(pub [MontyField31<PMP>; WIDTH]);
 
 impl<PMP: PackedMontyParameters> PackedMontyField31AVX2<PMP> {
@@ -53,7 +54,6 @@ impl<PMP: PackedMontyParameters> PackedMontyField31AVX2<PMP> {
     }
 
     #[inline]
-    #[must_use]
     /// Make a packed field vector from an arch-specific vector.
     ///
     /// SAFETY: The caller must ensure that each element of `vector` represents a valid `MontyField31<FP>`.
@@ -73,7 +73,6 @@ impl<PMP: PackedMontyParameters> PackedMontyField31AVX2<PMP> {
     /// Copy `value` to all positions in a packed vector. This is the same as
     /// `From<MontyField31<FP>>::from`, but `const`.
     #[inline]
-    #[must_use]
     const fn broadcast(value: MontyField31<PMP>) -> Self {
         Self([value; WIDTH])
     }
@@ -1223,4 +1222,43 @@ pub(crate) fn octic_mul_packed<FP, const WIDTH: usize>(
     let dot = PackedMontyField31AVX2::dot_product(&lhs, &rhs).0;
 
     res[..].copy_from_slice(&dot);
+}
+
+/// Multiplication by a base field element in a binomial extension field.
+#[inline]
+pub(crate) fn base_mul_packed<FP, const WIDTH: usize>(
+    a: [MontyField31<FP>; WIDTH],
+    b: MontyField31<FP>,
+    res: &mut [MontyField31<FP>; WIDTH],
+) where
+    FP: FieldParameters + BinomialExtensionData<WIDTH>,
+{
+    match WIDTH {
+        1 => res[0] = a[0] * b,
+        4 => {
+            let zero = MontyField31::<FP>::ZERO;
+            let lhs = PackedMontyField31AVX2([a[0], a[1], a[2], a[3], zero, zero, zero, zero]);
+
+            let out = lhs * b;
+
+            res.copy_from_slice(&out.0[..4]);
+        }
+        5 => {
+            let zero = MontyField31::<FP>::ZERO;
+            let lhs = PackedMontyField31AVX2([a[0], a[1], a[2], a[3], zero, zero, zero, zero]);
+
+            let out = lhs * b;
+            res[4] = a[4] * b;
+
+            res[..4].copy_from_slice(&out.0[..4]);
+        }
+        8 => {
+            let lhs = PackedMontyField31AVX2([a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]]);
+
+            let out = lhs * b;
+
+            res.copy_from_slice(&out.0);
+        }
+        _ => panic!("Unsupported binomial extension degree: {}", WIDTH),
+    }
 }
