@@ -11,7 +11,6 @@ use rand::distr::{Distribution, StandardUniform};
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 
-use crate::air::alu::air::FieldOperation;
 use crate::air::alu::cols::FieldOpEvent;
 
 const D: usize = 4;
@@ -117,53 +116,70 @@ where
 
 #[repr(C)]
 /// Represents the columns in the ALU trace.
-/// REPETITIONS counts how many `a * b = c` operations to do per row in the AIR
-pub struct ExtAluCols<F, const REPETITIONS: usize = 1> {
-    pub left_addr: [F; REPETITIONS],
-    pub left_val: [BinomialExtension<F>; REPETITIONS],
-    pub right_addr: [F; REPETITIONS],
-    pub right_val: [BinomialExtension<F>; REPETITIONS],
-    pub res_addr: [F; REPETITIONS],
-    pub res_val: [BinomialExtension<F>; REPETITIONS],
+/// R counts how many `a * b = c` operations to do per row in the AIR
+pub struct ExtAluCols<F, const R: usize = 1> {
+    pub left_addr: [F; R],
+    pub left_val: [BinomialExtension<F>; R],
+    pub right_addr: [F; R],
+    pub right_val: [BinomialExtension<F>; R],
+    pub res_addr: [F; R],
+    pub res_val: [BinomialExtension<F>; R],
 }
 
-impl<F, const REPETITIONS: usize> ExtAluCols<F, REPETITIONS> {
-    pub const TRACE_WIDTH: usize = 3 * REPETITIONS * (D + 1);
+impl<F, const R: usize> ExtAluCols<F, R> {
+    pub const TRACE_WIDTH: usize = 3 * R * (D + 1);
 }
 
-impl<F, const REPETITIONS: usize> Borrow<ExtAluCols<F, REPETITIONS>> for [F] {
-    fn borrow(&self) -> &ExtAluCols<F, REPETITIONS> {
-        debug_assert_eq!(self.len(), ExtAluCols::<F, REPETITIONS>::TRACE_WIDTH);
-        let (prefix, shorts, _suffix) = unsafe { self.align_to::<ExtAluCols<F, REPETITIONS>>() };
+impl<F, const R: usize> Borrow<ExtAluCols<F, R>> for [F] {
+    fn borrow(&self) -> &ExtAluCols<F, R> {
+        debug_assert_eq!(self.len(), ExtAluCols::<F, R>::TRACE_WIDTH);
+        let (prefix, shorts, _suffix) = unsafe { self.align_to::<ExtAluCols<F, R>>() };
         debug_assert!(prefix.is_empty(), "Alignment should match");
         debug_assert_eq!(shorts.len(), 1);
         &shorts[0]
     }
 }
 
-impl<F, const REPETITIONS: usize> BorrowMut<ExtAluCols<F, REPETITIONS>> for [F] {
-    fn borrow_mut(&mut self) -> &mut ExtAluCols<F, REPETITIONS> {
-        debug_assert_eq!(self.len(), ExtAluCols::<F, REPETITIONS>::TRACE_WIDTH);
-        let (prefix, shorts, _suffix) =
-            unsafe { self.align_to_mut::<ExtAluCols<F, REPETITIONS>>() };
+impl<F, const R: usize> BorrowMut<ExtAluCols<F, R>> for [F] {
+    fn borrow_mut(&mut self) -> &mut ExtAluCols<F, R> {
+        debug_assert_eq!(self.len(), ExtAluCols::<F, R>::TRACE_WIDTH);
+        let (prefix, shorts, _suffix) = unsafe { self.align_to_mut::<ExtAluCols<F, R>>() };
         debug_assert!(prefix.is_empty(), "Alignment should match");
         debug_assert_eq!(shorts.len(), 1);
         &mut shorts[0]
     }
 }
 
+pub enum Operation {
+    Add,
+    Sub,
+    Mul,
+}
+
+impl Operation {
+    pub fn apply<I: Add<Output = O> + Sub<Output = O> + Mul<Output = O>, O>(
+        &self,
+        left: I,
+        right: I,
+    ) -> O {
+        match self {
+            Self::Add => left + right,
+            Self::Sub => left - right,
+            Self::Mul => left * right,
+        }
+    }
+}
 /*
 Asserts a op b = c, where op in {+, -, *}.
 (so that the total constraint degree is self.degree).
-REPETITIONS counts how many `a * b = c` operations to do per row in the AIR
+R counts how many `a * b = c` operations to do per row in the AIR
 */
-pub struct ExtAluAir<const REPETITIONS: usize = 1> {
-    op: FieldOperation,
+pub struct ExtAluAir<const R: usize = 1> {
+    op: Operation,
 }
 
-impl<const REPETITIONS: usize> ExtAluAir<REPETITIONS> {
-    pub const TRACE_WIDTH: usize = 3 * REPETITIONS * (D + 1);
-
+impl<const R: usize> ExtAluAir<R> {
+    pub const TRACE_WIDTH: usize = 3 * R * (D + 1);
     pub fn random_valid_trace<F>(&self, rows: usize, valid: bool) -> RowMajorMatrix<F>
     where
         F: BinomiallyExtendable<D>,
@@ -174,8 +190,7 @@ impl<const REPETITIONS: usize> ExtAluAir<REPETITIONS> {
         let mut trace =
             RowMajorMatrix::new(F::zero_vec(n_padded * Self::TRACE_WIDTH), Self::TRACE_WIDTH);
 
-        let (prefix, rows, suffix) =
-            unsafe { trace.values.align_to_mut::<ExtAluCols<F, REPETITIONS>>() };
+        let (prefix, rows, suffix) = unsafe { trace.values.align_to_mut::<ExtAluCols<F, R>>() };
         assert!(prefix.is_empty(), "Alignment should match");
         assert!(suffix.is_empty(), "Alignment should match");
         assert_eq!(rows.len(), n_padded);
@@ -212,14 +227,13 @@ impl<const REPETITIONS: usize> ExtAluAir<REPETITIONS> {
         let mut trace =
             RowMajorMatrix::new(F::zero_vec(n_padded * Self::TRACE_WIDTH), Self::TRACE_WIDTH);
 
-        let (prefix, rows, suffix) =
-            unsafe { trace.values.align_to_mut::<ExtAluCols<F, REPETITIONS>>() };
+        let (prefix, rows, suffix) = unsafe { trace.values.align_to_mut::<ExtAluCols<F, R>>() };
         assert!(prefix.is_empty(), "Alignment should match");
         assert!(suffix.is_empty(), "Alignment should match");
         assert_eq!(rows.len(), n);
 
         for event in events.iter() {
-            for i in 0..REPETITIONS {
+            for i in 0..R {
                 let row = &mut rows[i];
                 row.left_addr[i] = F::from_usize(event.left_addr[i]);
                 row.left_val[i] = event.left_val[i];
@@ -233,18 +247,17 @@ impl<const REPETITIONS: usize> ExtAluAir<REPETITIONS> {
     }
 }
 
-impl<F, const REPETITIONS: usize> BaseAir<F> for ExtAluAir<REPETITIONS> {
+impl<F, const R: usize> BaseAir<F> for ExtAluAir<R> {
     fn width(&self) -> usize {
         Self::TRACE_WIDTH
     }
 }
 
-impl<AB: AirBuilder, const REPETITIONS: usize> Air<AB> for ExtAluAir<REPETITIONS> {
+impl<AB: AirBuilder, const R: usize> Air<AB> for ExtAluAir<R> {
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();
         let local = main.row_slice(0).expect("Matrix is empty?");
-        let local: &ExtAluCols<AB::Var, REPETITIONS> = (*local).borrow();
-
+        let local: &ExtAluCols<AB::Var, R> = (*local).borrow();
         let into_expr = |v: &BinomialExtension<AB::Var>| {
             let e: BinomialExtension<AB::Expr> = BinomialExtension::from(v);
             e
@@ -287,8 +300,7 @@ mod test {
     use rand::distr::{Distribution, StandardUniform};
     use rand::rngs::SmallRng;
 
-    use crate::air::alu::air::FieldOperation;
-    use crate::air::ext_alu_air::{D, ExtAluAir};
+    use crate::air::ext_alu_air::{D, ExtAluAir, Operation};
 
     fn do_test<SC: StarkGenericConfig>(
         config: SC,
@@ -340,9 +352,7 @@ mod test {
         type MyConfig = StarkConfig<Pcs, Challenge, Challenger>;
         let config = MyConfig::new(pcs, challenger);
 
-        let air = ExtAluAir {
-            op: FieldOperation::Add,
-        };
+        let air = ExtAluAir { op: Operation::Add };
 
         do_test(config, air, 1 << log_n)
     }
@@ -403,9 +413,7 @@ mod test {
         type MyConfig = StarkConfig<Pcs, Challenge, Challenger>;
         let config = MyConfig::new(pcs, challenger);
 
-        let air = ExtAluAir {
-            op: FieldOperation::Mul,
-        };
+        let air = ExtAluAir { op: Operation::Mul };
 
         do_test(config, air, 1 << log_n)
     }
@@ -457,9 +465,7 @@ mod test {
         let challenger = Challenger::new(perm);
         let config = MyConfig::new(pcs, challenger);
 
-        let air = ExtAluAir {
-            op: FieldOperation::Sub,
-        };
+        let air = ExtAluAir { op: Operation::Sub };
         do_test(config, air, 1 << 8)
     }
 

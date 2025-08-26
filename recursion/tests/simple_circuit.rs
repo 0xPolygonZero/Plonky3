@@ -5,13 +5,14 @@ use p3_challenger::DuplexChallenger;
 use p3_commit::testing::TrivialPcs;
 use p3_dft::Radix2DitParallel;
 use p3_field::extension::BinomialExtensionField;
+use p3_recursion::air::alu::air::{AddAir, SubAir};
 use p3_recursion::air::asic::Asic;
+use p3_recursion::air::witness::air::WitnessAir;
 use p3_recursion::circuit_builder::circuit_builder::{CircuitBuilder, CircuitError};
 use p3_recursion::circuit_builder::gates::arith_gates::{AddGate, SubGate};
 use p3_recursion::prover::prove;
-use p3_recursion::prover::tables::{AddTable, SubTable, WitnessTable};
 use p3_recursion::verifier::verify;
-use p3_uni_stark::StarkConfig;
+use p3_uni_stark::{DebugConstraintBuilder, StarkConfig};
 use rand::SeedableRng;
 use rand::rngs::SmallRng;
 
@@ -48,11 +49,11 @@ pub fn test_simple_circuit() -> Result<(), CircuitError> {
     AddGate::add_to_circuit(&mut builder, a, b, c);
     SubGate::add_to_circuit(&mut builder, c, d, e);
 
-    let asic = Asic {
-        asic: vec![
-            Box::new(AddTable {}),
-            Box::new(SubTable {}),
-            Box::new(WitnessTable {}),
+    let asic: Asic<MyConfig, DebugConstraintBuilder<Value>> = Asic {
+        chips: vec![
+            Box::new(AddAir::<1>::new()),
+            Box::new(SubAir::<1>::new()),
+            Box::new(WitnessAir {}),
         ],
     };
 
@@ -66,9 +67,9 @@ pub fn test_simple_circuit() -> Result<(), CircuitError> {
 
     println!("builder wires: {:?}", builder.wires());
 
-    let proof = prove(&config, asic, all_events);
+    let proof = prove(&config, &asic, all_events);
 
-    verify(&config, proof).unwrap();
+    verify(&config, &asic, proof).unwrap();
 
     Ok(())
 }
