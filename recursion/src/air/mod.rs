@@ -1,7 +1,6 @@
 pub mod alu;
 pub mod asic;
 pub mod ext_alu_air;
-pub mod fillable_cols;
 pub mod witness;
 
 pub use alu::air::AluAir;

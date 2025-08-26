@@ -21,7 +21,5 @@ where
 {
     let traces = asic.generate_trace(&all_events);
 
-    println!("trace = {:?}", traces);
-
     asic.prove_chips(config, traces)
 }
