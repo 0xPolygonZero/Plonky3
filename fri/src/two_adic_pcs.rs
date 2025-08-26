@@ -61,6 +61,16 @@ impl<Val, Dft, InputMmcs, FriMmcs> TwoAdicFriPcs<Val, Dft, InputMmcs, FriMmcs> {
             _phantom: PhantomData,
         }
     }
+
+    /// Get a reference to the input MMCS
+    pub fn input_mmcs(&self) -> &InputMmcs {
+        &self.mmcs
+    }
+
+    /// Get a reference to the FRI parameters (which contains the FRI MMCS)
+    pub fn fri_params(&self) -> &FriParameters<FriMmcs> {
+        &self.fri
+    }
 }
 
 /// The Prover Data associated to a commitment to a collection of matrices
