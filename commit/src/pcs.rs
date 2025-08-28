@@ -26,7 +26,7 @@ where
     type Domain: PolynomialSpace;
 
     /// The commitment that's sent to the verifier.
-    type Commitment: Clone + Serialize + DeserializeOwned;
+    type Commitment: Clone + Serialize + DeserializeOwned + Debug;
 
     /// Data that the prover stores for committed polynomials, to help the prover with opening.
     type ProverData;
@@ -180,6 +180,10 @@ where
         _domain: Self::Domain,
     ) -> Option<(Self::Commitment, Self::ProverData)> {
         None
+    }
+
+    fn get_log_blowup_final_height(&self) -> (usize, usize) {
+        unimplemented!()
     }
 }
 

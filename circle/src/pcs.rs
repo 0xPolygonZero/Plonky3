@@ -86,6 +86,7 @@ pub struct CirclePcsProof<
     >,
 }
 
+use core::fmt::Debug;
 impl<Val, InputMmcs, FriMmcs, Challenge, Challenger> Pcs<Challenge, Challenger>
     for CirclePcs<Val, InputMmcs, FriMmcs>
 where
@@ -94,6 +95,7 @@ where
     InputMmcs: Mmcs<Val>,
     FriMmcs: Mmcs<Challenge>,
     Challenger: FieldChallenger<Val> + GrindingChallenger + CanObserve<FriMmcs::Commitment>,
+    <InputMmcs as Mmcs<Val>>::Commitment: Debug,
 {
     type Domain = CircleDomain<Val>;
     type Commitment = InputMmcs::Commitment;

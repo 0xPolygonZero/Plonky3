@@ -15,8 +15,9 @@ use p3_uni_stark::StarkConfig;
 use rand::SeedableRng;
 use rand::rngs::SmallRng;
 
+const D: usize = 4;
 type Value = BabyBear;
-type Challenge = BinomialExtensionField<Value, 4>;
+type Challenge = BinomialExtensionField<Value, D>;
 type Perm = Poseidon2BabyBear<16>;
 type Dft = Radix2DitParallel<Value>;
 type Challenger = DuplexChallenger<Value, Perm, 16, 8>;
@@ -45,8 +46,8 @@ pub fn test_simple_circuit() -> Result<(), CircuitError> {
     let d = builder.new_wire();
     let e = builder.new_wire();
 
-    AddGate::add_to_circuit(&mut builder, a, b, c);
-    SubGate::add_to_circuit(&mut builder, c, d, e);
+    AddGate::add_to_circuit::<D>(&mut builder, a, b, c);
+    SubGate::add_to_circuit::<D>(&mut builder, c, d, e);
 
     let asic = Asic {
         asic: vec![Box::new(AddTable {}), Box::new(SubTable {})],

@@ -4,18 +4,18 @@ use crate::air::AluAir;
 use crate::air::alu::air::FieldOperation;
 use crate::air::asic::Asic;
 use crate::circuit_builder::gates::event::AllEvents;
-pub struct RecursiveProof<SC: StarkGenericConfig> {
+pub struct RecursiveProof<SC: StarkGenericConfig, const D: usize> {
     pub add_air: AluAir<1>,
     pub sub_air: AluAir<1>,
     pub add_proof: Proof<SC>,
     pub sub_proof: Proof<SC>,
 }
 
-pub fn prove<SC>(
+pub fn prove<SC, const D: usize>(
     config: &SC,
-    asic: Asic<Val<SC>>,
-    all_events: AllEvents<Val<SC>>,
-) -> RecursiveProof<SC>
+    asic: Asic<Val<SC>, D>,
+    all_events: AllEvents<Val<SC>, D>,
+) -> RecursiveProof<SC, D>
 where
     SC: StarkGenericConfig,
 {

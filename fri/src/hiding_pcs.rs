@@ -59,6 +59,7 @@ where
     Challenger:
         FieldChallenger<Val> + CanObserve<FriMmcs::Commitment> + GrindingChallenger<Witness = Val>,
     R: Rng + Send + Sync,
+    <InputMmcs as Mmcs<Val>>::Commitment: Debug,
 {
     type Domain = TwoAdicMultiplicativeCoset<Val>;
     type Commitment = InputMmcs::Commitment;
@@ -336,6 +337,10 @@ where
         let r_commit_and_data =
             Pcs::<Challenge, Challenger>::commit(&self.inner, [(extended_domain, random_vals)]);
         Some(r_commit_and_data)
+    }
+
+    fn get_log_blowup_final_height(&self) -> (usize, usize) {
+        (self.inner.fri.log_blowup, self.inner.fri.log_final_poly_len)
     }
 }
 

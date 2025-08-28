@@ -14,14 +14,12 @@ use rand::{Rng, SeedableRng};
 use crate::air::alu::air::FieldOperation;
 use crate::air::alu::cols::FieldOpEvent;
 
-const D: usize = 4;
-
 /// A binomial extension element represented over a generic type `T`.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[repr(C)]
-pub struct BinomialExtension<T>(pub [T; D]);
+pub struct BinomialExtension<T, const D: usize>(pub [T; D]);
 
-impl<F> BinomialExtension<F> {
+impl<F, const D: usize> BinomialExtension<F, D> {
     /// Creates a new binomial extension element from a base element.
     pub fn from_base(b: F) -> Self
     where
@@ -38,32 +36,32 @@ impl<F> BinomialExtension<F> {
     }
 
     /// Creates a new binomial extension element from a binomial extension element.
-    pub fn from<S: Into<F> + Clone>(from: &BinomialExtension<S>) -> Self {
+    pub fn from<S: Into<F> + Clone>(from: &BinomialExtension<S, D>) -> Self {
         BinomialExtension(core::array::from_fn(|i| from.0[i].clone().into()))
     }
 }
 
-impl<F> Borrow<BinomialExtension<F>> for [F] {
-    fn borrow(&self) -> &BinomialExtension<F> {
+impl<F, const D: usize> Borrow<BinomialExtension<F, D>> for [F] {
+    fn borrow(&self) -> &BinomialExtension<F, D> {
         debug_assert_eq!(self.len(), D);
-        let (prefix, shorts, _suffix) = unsafe { self.align_to::<BinomialExtension<F>>() };
+        let (prefix, shorts, _suffix) = unsafe { self.align_to::<BinomialExtension<F, D>>() };
         debug_assert!(prefix.is_empty(), "Alignment should match");
         debug_assert_eq!(shorts.len(), 1);
         &shorts[0]
     }
 }
 
-impl<F> BorrowMut<BinomialExtension<F>> for [F] {
-    fn borrow_mut(&mut self) -> &mut BinomialExtension<F> {
+impl<F, const D: usize> BorrowMut<BinomialExtension<F, D>> for [F] {
+    fn borrow_mut(&mut self) -> &mut BinomialExtension<F, D> {
         debug_assert_eq!(self.len(), D);
-        let (prefix, shorts, _suffix) = unsafe { self.align_to_mut::<BinomialExtension<F>>() };
+        let (prefix, shorts, _suffix) = unsafe { self.align_to_mut::<BinomialExtension<F, D>>() };
         debug_assert!(prefix.is_empty(), "Alignment should match");
         debug_assert_eq!(shorts.len(), 1);
         &mut shorts[0]
     }
 }
 
-impl<T: Add<Output = T> + Clone> Add for BinomialExtension<T> {
+impl<T: Add<Output = T> + Clone, const D: usize> Add for BinomialExtension<T, D> {
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
@@ -73,7 +71,7 @@ impl<T: Add<Output = T> + Clone> Add for BinomialExtension<T> {
     }
 }
 
-impl<T: Sub<Output = T> + Clone> Sub for BinomialExtension<T> {
+impl<T: Sub<Output = T> + Clone, const D: usize> Sub for BinomialExtension<T, D> {
     type Output = Self;
 
     fn sub(self, rhs: Self) -> Self::Output {
@@ -83,11 +81,13 @@ impl<T: Sub<Output = T> + Clone> Sub for BinomialExtension<T> {
     }
 }
 
-impl<F: Add<Output = F> + Mul<Output = F> + Algebra<F>> Mul for BinomialExtension<F> {
+impl<F: Add<Output = F> + Mul<Output = F> + Algebra<F>, const D: usize> Mul
+    for BinomialExtension<F, D>
+{
     type Output = Self;
 
     fn mul(self, rhs: Self) -> Self::Output {
-        let mut result = [F::ZERO, F::ZERO, F::ZERO, F::ZERO];
+        let mut result = [F::ZERO; D];
         // This value is specific for BabyBear prime's extension `F_p[x]/(x^4 - 11)`.
         let w = F::from_u8(11); // TODO: Is this correct?
 
@@ -106,11 +106,11 @@ impl<F: Add<Output = F> + Mul<Output = F> + Algebra<F>> Mul for BinomialExtensio
     }
 }
 
-impl<F> Distribution<BinomialExtension<F>> for StandardUniform
+impl<F, const D: usize> Distribution<BinomialExtension<F, D>> for StandardUniform
 where
     StandardUniform: Distribution<F>,
 {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BinomialExtension<F> {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BinomialExtension<F, D> {
         BinomialExtension(core::array::from_fn(|_| rng.random()))
     }
 }
@@ -118,23 +118,23 @@ where
 #[repr(C)]
 /// Represents the columns in the ALU trace.
 /// REPETITIONS counts how many `a * b = c` operations to do per row in the AIR
-pub struct ExtAluCols<F, const REPETITIONS: usize = 1> {
+pub struct ExtAluCols<F, const D: usize, const REPETITIONS: usize = 1> {
     pub left_addr: [F; REPETITIONS],
-    pub left_val: [BinomialExtension<F>; REPETITIONS],
+    pub left_val: [BinomialExtension<F, D>; REPETITIONS],
     pub right_addr: [F; REPETITIONS],
-    pub right_val: [BinomialExtension<F>; REPETITIONS],
+    pub right_val: [BinomialExtension<F, D>; REPETITIONS],
     pub res_addr: [F; REPETITIONS],
-    pub res_val: [BinomialExtension<F>; REPETITIONS],
+    pub res_val: [BinomialExtension<F, D>; REPETITIONS],
 }
 
-impl<F, const REPETITIONS: usize> ExtAluCols<F, REPETITIONS> {
+impl<F, const D: usize, const REPETITIONS: usize> ExtAluCols<F, D, REPETITIONS> {
     pub const TRACE_WIDTH: usize = 3 * REPETITIONS * (D + 1);
 }
 
-impl<F, const REPETITIONS: usize> Borrow<ExtAluCols<F, REPETITIONS>> for [F] {
-    fn borrow(&self) -> &ExtAluCols<F, REPETITIONS> {
-        debug_assert_eq!(self.len(), ExtAluCols::<F, REPETITIONS>::TRACE_WIDTH);
-        let (prefix, shorts, _suffix) = unsafe { self.align_to::<ExtAluCols<F, REPETITIONS>>() };
+impl<F, const D: usize, const REPETITIONS: usize> Borrow<ExtAluCols<F, D, REPETITIONS>> for [F] {
+    fn borrow(&self) -> &ExtAluCols<F, D, REPETITIONS> {
+        debug_assert_eq!(self.len(), ExtAluCols::<F, D, REPETITIONS>::TRACE_WIDTH);
+        let (prefix, shorts, _suffix) = unsafe { self.align_to::<ExtAluCols<F, D, REPETITIONS>>() };
         debug_assert!(prefix.is_empty(), "Alignment should match");
         debug_assert_eq!(shorts.len(), 1);
         &shorts[0]
@@ -157,17 +157,17 @@ Asserts a op b = c, where op in {+, -, *}.
 (so that the total constraint degree is self.degree).
 REPETITIONS counts how many `a * b = c` operations to do per row in the AIR
 */
-pub struct ExtAluAir<const REPETITIONS: usize = 1> {
+pub struct ExtAluAir<const D: usize, const REPETITIONS: usize> {
     op: FieldOperation,
 }
 
-impl<const REPETITIONS: usize> ExtAluAir<REPETITIONS> {
+impl<const D: usize, const REPETITIONS: usize> ExtAluAir<D, REPETITIONS> {
     pub const TRACE_WIDTH: usize = 3 * REPETITIONS * (D + 1);
 
     pub fn random_valid_trace<F>(&self, rows: usize, valid: bool) -> RowMajorMatrix<F>
     where
         F: BinomiallyExtendable<D>,
-        StandardUniform: Distribution<BinomialExtension<F>>,
+        StandardUniform: Distribution<BinomialExtension<F, D>>,
     {
         let mut rng = SmallRng::seed_from_u64(1);
         let n_padded = rows.next_power_of_two();
@@ -175,7 +175,7 @@ impl<const REPETITIONS: usize> ExtAluAir<REPETITIONS> {
             RowMajorMatrix::new(F::zero_vec(n_padded * Self::TRACE_WIDTH), Self::TRACE_WIDTH);
 
         let (prefix, rows, suffix) =
-            unsafe { trace.values.align_to_mut::<ExtAluCols<F, REPETITIONS>>() };
+            unsafe { trace.values.align_to_mut::<ExtAluCols<F, D, REPETITIONS>>() };
         assert!(prefix.is_empty(), "Alignment should match");
         assert!(suffix.is_empty(), "Alignment should match");
         assert_eq!(rows.len(), n_padded);
@@ -205,7 +205,7 @@ impl<const REPETITIONS: usize> ExtAluAir<REPETITIONS> {
     }
 
     pub fn build_trace<F: Field>(
-        events: &[FieldOpEvent<BinomialExtension<F>>],
+        events: &[FieldOpEvent<BinomialExtension<F, D>>],
     ) -> RowMajorMatrix<F> {
         let n = events.len();
         let n_padded = n.next_power_of_two();
@@ -213,7 +213,7 @@ impl<const REPETITIONS: usize> ExtAluAir<REPETITIONS> {
             RowMajorMatrix::new(F::zero_vec(n_padded * Self::TRACE_WIDTH), Self::TRACE_WIDTH);
 
         let (prefix, rows, suffix) =
-            unsafe { trace.values.align_to_mut::<ExtAluCols<F, REPETITIONS>>() };
+            unsafe { trace.values.align_to_mut::<ExtAluCols<F, D, REPETITIONS>>() };
         assert!(prefix.is_empty(), "Alignment should match");
         assert!(suffix.is_empty(), "Alignment should match");
         assert_eq!(rows.len(), n);
@@ -233,20 +233,22 @@ impl<const REPETITIONS: usize> ExtAluAir<REPETITIONS> {
     }
 }
 
-impl<F, const REPETITIONS: usize> BaseAir<F> for ExtAluAir<REPETITIONS> {
+impl<F, const D: usize, const REPETITIONS: usize> BaseAir<F> for ExtAluAir<D, REPETITIONS> {
     fn width(&self) -> usize {
         Self::TRACE_WIDTH
     }
 }
 
-impl<AB: AirBuilder, const REPETITIONS: usize> Air<AB> for ExtAluAir<REPETITIONS> {
+impl<AB: AirBuilder, const D: usize, const REPETITIONS: usize> Air<AB>
+    for ExtAluAir<D, REPETITIONS>
+{
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();
         let local = main.row_slice(0).expect("Matrix is empty?");
-        let local: &ExtAluCols<AB::Var, REPETITIONS> = (*local).borrow();
+        let local: &ExtAluCols<AB::Var, D, REPETITIONS> = (*local).borrow();
 
-        let into_expr = |v: &BinomialExtension<AB::Var>| {
-            let e: BinomialExtension<AB::Expr> = BinomialExtension::from(v);
+        let into_expr = |v: &BinomialExtension<AB::Var, D>| {
+            let e: BinomialExtension<AB::Expr, D> = BinomialExtension::from(v);
             e
         };
 
@@ -288,11 +290,11 @@ mod test {
     use rand::rngs::SmallRng;
 
     use crate::air::alu::air::FieldOperation;
-    use crate::air::ext_alu_air::{D, ExtAluAir};
+    use crate::air::ext_alu_air::ExtAluAir;
 
     fn do_test<SC: StarkGenericConfig>(
         config: SC,
-        air: ExtAluAir<D>,
+        air: ExtAluAir<4, 1>,
         log_height: usize,
     ) -> Result<(), impl Debug>
     where

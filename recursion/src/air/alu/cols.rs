@@ -11,6 +11,16 @@ pub struct AddEvent<F, const REPETITIONS: usize = 1>(pub FieldOpEvent<F, REPETIT
 pub struct SubEvent<F, const REPETITIONS: usize = 1>(pub FieldOpEvent<F>);
 pub struct MulEvent<F, const REPETITIONS: usize = 1>(pub FieldOpEvent<F>);
 
+pub struct ExtAddEvent<F, const D: usize, const REPETITIONS: usize = 1>(
+    pub ExtFieldOpEvent<F, D, REPETITIONS>,
+);
+pub struct ExtSubEvent<F, const D: usize, const REPETITIONS: usize = 1>(
+    pub ExtFieldOpEvent<F, D, REPETITIONS>,
+);
+pub struct ExtMulEvent<F, const D: usize, const REPETITIONS: usize = 1>(
+    pub ExtFieldOpEvent<F, D, REPETITIONS>,
+);
+
 /// Represents an event in the field operation trace.
 pub struct FieldOpEvent<T, const REPETITIONS: usize = 1> {
     pub left_addr: [usize; REPETITIONS],
@@ -54,8 +64,8 @@ impl<F: Field, const REPETITIONS: usize> FieldOpEvent<F, REPETITIONS> {
 }
 
 pub struct AddTable;
-impl<F: Field> Table<F> for AddTable {
-    fn generate_trace(&self, all_events: &AllEvents<F>) -> RowMajorMatrix<F> {
+impl<F: Field, const D: usize> Table<F, D> for AddTable {
+    fn generate_trace(&self, all_events: &AllEvents<F, D>) -> RowMajorMatrix<F> {
         FieldOpEvent::generate_trace(
             all_events.add_events.iter().map(|x| &x.0),
             all_events.add_events.len(),
@@ -65,8 +75,8 @@ impl<F: Field> Table<F> for AddTable {
 
 #[derive(PartialEq, Eq, Hash)]
 pub struct SubTable;
-impl<F: Field> Table<F> for SubTable {
-    fn generate_trace(&self, all_events: &AllEvents<F>) -> RowMajorMatrix<F> {
+impl<F: Field, const D: usize> Table<F, D> for SubTable {
+    fn generate_trace(&self, all_events: &AllEvents<F, D>) -> RowMajorMatrix<F> {
         FieldOpEvent::generate_trace(
             all_events.sub_events.iter().map(|x| &x.0),
             all_events.sub_events.len(),
@@ -76,8 +86,8 @@ impl<F: Field> Table<F> for SubTable {
 
 #[derive(PartialEq, Eq, Hash)]
 pub struct MulTable;
-impl<F: Field> Table<F> for MulTable {
-    fn generate_trace(&self, all_events: &AllEvents<F>) -> RowMajorMatrix<F> {
+impl<F: Field, const D: usize> Table<F, D> for MulTable {
+    fn generate_trace(&self, all_events: &AllEvents<F, D>) -> RowMajorMatrix<F> {
         FieldOpEvent::generate_trace(
             all_events.mul_events.iter().map(|x| &x.0),
             all_events.mul_events.len(),
@@ -120,4 +130,13 @@ impl<F: Field, const REPETITIONS: usize> BorrowMut<AluCols<F, REPETITIONS>> for 
         debug_assert_eq!(shorts.len(), 1);
         &mut shorts[0]
     }
+}
+
+pub struct ExtFieldOpEvent<T, const D: usize, const REPETITIONS: usize> {
+    pub left_addr: [[usize; D]; REPETITIONS],
+    pub left_val: [[T; D]; REPETITIONS],
+    pub right_addr: [[usize; D]; REPETITIONS],
+    pub right_val: [[T; D]; REPETITIONS],
+    pub res_addr: [[usize; D]; REPETITIONS],
+    pub res_val: [[T; D]; REPETITIONS],
 }

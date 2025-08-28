@@ -48,7 +48,7 @@ use crate::{FriFoldingStrategy, FriParameters, FriProof, prover};
 pub struct TwoAdicFriPcs<Val, Dft, InputMmcs, FriMmcs> {
     pub(crate) dft: Dft,
     pub(crate) mmcs: InputMmcs,
-    pub(crate) fri: FriParameters<FriMmcs>,
+    pub fri: FriParameters<FriMmcs>,
     _phantom: PhantomData<Val>,
 }
 
@@ -172,6 +172,7 @@ where
     Challenge: ExtensionField<Val>,
     Challenger:
         FieldChallenger<Val> + CanObserve<FriMmcs::Commitment> + GrindingChallenger<Witness = Val>,
+    <InputMmcs as Mmcs<Val>>::Commitment: Debug,
 {
     type Domain = TwoAdicMultiplicativeCoset<Val>;
     type Commitment = InputMmcs::Commitment;
@@ -554,6 +555,10 @@ where
         )?;
 
         Ok(())
+    }
+
+    fn get_log_blowup_final_height(&self) -> (usize, usize) {
+        (self.fri.log_blowup, self.fri.log_final_poly_len)
     }
 }
 

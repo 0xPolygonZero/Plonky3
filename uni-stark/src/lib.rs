@@ -1,10 +1,9 @@
 //! A minimal univariate STARK framework.
 
-#![no_std]
+// #![no_std]
 
 extern crate alloc;
 
-mod circuit_builder;
 mod config;
 mod folder;
 mod proof;
@@ -17,7 +16,6 @@ mod verifier;
 mod check_constraints;
 
 pub use check_constraints::*;
-pub use circuit_builder::*;
 pub use config::*;
 pub use folder::*;
 pub use proof::*;
