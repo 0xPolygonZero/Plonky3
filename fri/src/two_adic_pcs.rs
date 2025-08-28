@@ -17,10 +17,13 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::fmt::Debug;
 use core::marker::PhantomData;
+use p3_recursion::circuit_builder::{ChallengeWireId, CircuitBuilder};
+use p3_recursion::verifier::circuit_verifier::ProofWires;
+use p3_recursion::verifier::recursive_traits::{PcsRecursiveVerif, RecursiveLagrangeSels};
 
 use itertools::{Itertools, izip};
 use p3_challenger::{CanObserve, FieldChallenger, GrindingChallenger};
-use p3_commit::{BatchOpening, Mmcs, OpenedValues, Pcs};
+use p3_commit::{BatchOpening, Mmcs, OpenedValues, Pcs, PolynomialSpace};
 use p3_dft::TwoAdicSubgroupDft;
 use p3_field::coset::TwoAdicMultiplicativeCoset;
 use p3_field::{
@@ -615,4 +618,69 @@ fn compute_inverse_denominators<F: TwoAdicField, EF: ExtensionField<F>, M: Matri
             )
         })
         .collect()
+}
+
+impl<Dft, InputMmcs, FriMmcs, F: TwoAdicField, EF, const D: usize>
+    PcsRecursiveVerif<TwoAdicMultiplicativeCoset<F>, F, EF, D>
+    for TwoAdicFriPcs<F, Dft, InputMmcs, FriMmcs>
+where
+    EF: ExtensionField<F>,
+{
+    fn get_challenges_circuit() -> Vec<ChallengeWireId<D>> {
+        vec![]
+    }
+
+    fn verify_circuit(
+        &self,
+        circuit: &mut CircuitBuilder<F, D>,
+        zeta: ChallengeWireId<D>,
+        zeta_next: ChallengeWireId<D>,
+        challenges: &[ChallengeWireId<D>],
+    ) {
+    }
+
+    fn generate(&self, circuit: CircuitBuilder<F, D>, wires: &[ChallengeWireId<D>], inputs: &[EF]) {
+    }
+
+    fn selectors_at_point_circuit(
+        &self,
+        circuit: &mut CircuitBuilder<F, D>,
+        domain: &TwoAdicMultiplicativeCoset<F>,
+        point: &ChallengeWireId<D>,
+    ) -> RecursiveLagrangeSels<D> {
+        RecursiveLagrangeSels {
+            is_first_row: circuit.new_challenge_wires(),
+            is_last_row: circuit.new_challenge_wires(),
+            is_transition: circuit.new_challenge_wires(),
+            inv_vanishing: circuit.new_challenge_wires(),
+        }
+    }
+
+    fn natural_domain_for_degree(&self, degree: usize) -> TwoAdicMultiplicativeCoset<F> {
+        TwoAdicMultiplicativeCoset::new(F::ONE, log2_strict_usize(degree)).unwrap()
+    }
+
+    fn create_disjoint_domain(
+        &self,
+        trace_domain: TwoAdicMultiplicativeCoset<F>,
+        degree: usize,
+    ) -> TwoAdicMultiplicativeCoset<F> {
+        trace_domain.create_disjoint_domain(degree)
+    }
+
+    fn split_domains(
+        &self,
+        trace_domain: &TwoAdicMultiplicativeCoset<F>,
+        degree: usize,
+    ) -> Vec<TwoAdicMultiplicativeCoset<F>> {
+        trace_domain.split_domains(degree)
+    }
+
+    fn size(&self, trace_domain: &TwoAdicMultiplicativeCoset<F>) -> usize {
+        trace_domain.size()
+    }
+
+    fn first_point(&self, trace_domain: &TwoAdicMultiplicativeCoset<F>) -> F {
+        trace_domain.first_point()
+    }
 }

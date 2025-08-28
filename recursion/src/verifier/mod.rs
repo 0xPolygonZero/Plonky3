@@ -1,4 +1,6 @@
 pub mod circuit_verifier;
+pub mod recursive_traits;
+
 use p3_field::BasedVectorSpace;
 use p3_uni_stark::{PcsError, StarkGenericConfig, VerificationError, verify as base_verify};
 
