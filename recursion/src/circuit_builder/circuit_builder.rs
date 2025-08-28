@@ -150,7 +150,7 @@ where
 {
     assert_eq!(D, EF::DIMENSION);
     match symbolic {
-        SymbolicExpression::Constant(c) => circuit.add_challenge_constant(EF::from(c.clone())),
+        SymbolicExpression::Constant(c) => circuit.add_challenge_constant(c.clone()),
         SymbolicExpression::Variable(v) => match v.entry {
             Entry::Preprocessed { offset } => {
                 if offset == 0 {
@@ -171,14 +171,10 @@ where
                 }
             }
             Entry::Public => {
-                let zero = circuit.add_constant(F::ZERO);
-                array::from_fn(|i| {
-                    if i == 0 {
-                        public_values[v.index].clone()
-                    } else {
-                        zero
-                    }
-                })
+                let mut res = circuit.add_challenge_constant(EF::ZERO);
+                res[0] = public_values[v.index].clone();
+
+                res
             }
             Entry::Challenge => challenges[v.index].clone(),
             _ => unimplemented!(),

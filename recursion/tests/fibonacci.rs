@@ -1,6 +1,7 @@
 use std::array;
 use std::borrow::Borrow;
 
+use itertools::Itertools;
 use p3_air::{Air, AirBuilder, AirBuilderWithPublicValues, BaseAir};
 use p3_baby_bear::BabyBear;
 use p3_challenger::{HashChallenger, SerializingChallenger32};
@@ -245,20 +246,14 @@ fn test_symbolic_to_circuit() {
     }
 
     // Set local and next values.
-    for (i, lv) in local_values.iter().enumerate() {
+    for (lv, c_lv) in local_values.iter().zip_eq(circuit_local_values) {
         circuit
-            .set_challenge_wires(
-                circuit_local_values[i],
-                lv.as_basis_coefficients_slice().try_into().unwrap(),
-            )
+            .set_challenge_wires(c_lv, lv.as_basis_coefficients_slice().try_into().unwrap())
             .unwrap();
     }
-    for (i, nv) in next_values.iter().enumerate() {
+    for (nv, c_nv) in next_values.iter().zip_eq(circuit_next_values) {
         circuit
-            .set_challenge_wires(
-                circuit_next_values[i],
-                nv.as_basis_coefficients_slice().try_into().unwrap(),
-            )
+            .set_challenge_wires(c_nv, nv.as_basis_coefficients_slice().try_into().unwrap())
             .unwrap();
     }
 
@@ -268,5 +263,6 @@ fn test_symbolic_to_circuit() {
         circuit.get_wire_value(sum[i]).unwrap().unwrap()
     }))
     .unwrap();
+
     assert!(folded_constraints == challenge_sum);
 }

@@ -3,7 +3,7 @@ use std::array;
 use p3_field::Field;
 use p3_field::extension::BinomiallyExtendable;
 
-use crate::air::alu::cols::{ExtFieldOpEvent, ExtMulEvent, ExtSubEvent, FieldOpEvent};
+use crate::air::alu::cols::{ExtAddEvent, ExtFieldOpEvent, ExtMulEvent, ExtSubEvent, FieldOpEvent};
 use crate::air::ext_alu_air::BinomialExtension;
 use crate::air::{AddEvent, MulEvent, SubEvent};
 use crate::circuit_builder::ChallengeWireId;
@@ -264,7 +264,7 @@ impl<F: Field + BinomiallyExtendable<D>, const D: usize> MulExtensionGate<F, D> 
 
 impl<F: Field + BinomiallyExtendable<D>, const D: usize> Gate<F, D> for MulExtensionGate<F, D> {
     fn n_inputs(&self) -> usize {
-        2 * Self::EXTENSION_N_INPUTS
+        Self::EXTENSION_N_INPUTS
     }
 
     fn n_outputs(&self) -> usize {
@@ -365,7 +365,7 @@ impl<F: Field + BinomiallyExtendable<D>, const D: usize> SubExtensionGate<F, D> 
 
 impl<F: Field + BinomiallyExtendable<D>, const D: usize> Gate<F, D> for SubExtensionGate<F, D> {
     fn n_inputs(&self) -> usize {
-        2 * Self::EXTENSION_N_INPUTS
+        Self::EXTENSION_N_INPUTS
     }
 
     fn n_outputs(&self) -> usize {
@@ -467,7 +467,7 @@ impl<F: Field + BinomiallyExtendable<D>, const D: usize> AddExtensionGate<F, D> 
 
 impl<F: Field + BinomiallyExtendable<D>, const D: usize> Gate<F, D> for AddExtensionGate<F, D> {
     fn n_inputs(&self) -> usize {
-        2 * Self::EXTENSION_N_INPUTS
+        Self::EXTENSION_N_INPUTS
     }
 
     fn n_outputs(&self) -> usize {
@@ -506,10 +506,10 @@ impl<F: Field + BinomiallyExtendable<D>, const D: usize> Gate<F, D> for AddExten
         let inp1_ext = BinomialExtension(inp1);
         let inp2 = array::from_fn(|i| input2[i].unwrap());
         let inp2_ext = BinomialExtension(inp2);
-        let res = inp1_ext - inp2_ext;
+        let res = inp1_ext + inp2_ext;
         builder.set_wire_values(&self.get_output_wires(), &res.0)?;
 
-        all_events.ext_sub_events.push(ExtSubEvent(ExtFieldOpEvent {
+        all_events.ext_add_events.push(ExtAddEvent(ExtFieldOpEvent {
             left_addr: [self.get_first_input_wires(); 1],
             left_val: [inp1; 1],
             right_addr: [self.get_second_input_wires(); 1],
