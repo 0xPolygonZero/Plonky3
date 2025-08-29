@@ -1,13 +1,29 @@
 use p3_field::{ExtensionField, Field};
 use p3_uni_stark::{Domain, StarkGenericConfig};
 
-use crate::circuit_builder::{ChallengeWireId, CircuitBuilder, WireId};
+use crate::{
+    circuit_builder::{ChallengeWireId, CircuitBuilder, WireId},
+    verifier::circuit_verifier::ProofWires,
+};
 
-pub trait PcsRecursiveVerif<Domain, F: Field, EF, const D: usize>
-where
+pub trait CommitRecursiveVerif {
+    fn get_commit_challenges_circuit() -> Vec<WireId>;
+}
+
+pub trait PcsRecursiveVerif<
+    InputProof,
+    Comm: CommitRecursiveVerif,
+    Domain,
+    F: Field,
+    EF,
+    const D: usize,
+> where
     EF: ExtensionField<F>,
 {
-    fn get_challenges_circuit() -> Vec<ChallengeWireId<D>>;
+    fn get_challenges_circuit(
+        circuit: &mut CircuitBuilder<F, D>,
+        proof_wires: &ProofWires<D, Comm, InputProof>,
+    ) -> Vec<ChallengeWireId<D>>;
 
     fn verify_circuit(
         &self,
@@ -16,8 +32,6 @@ where
         zeta_next: ChallengeWireId<D>,
         challenges: &[ChallengeWireId<D>],
     );
-
-    fn generate(&self, circuit: CircuitBuilder<F, D>, wires: &[ChallengeWireId<D>], inputs: &[EF]);
 
     fn selectors_at_point_circuit(
         &self,
@@ -63,4 +77,31 @@ pub trait RecursiveAir<SC: StarkGenericConfig, F: Field, const D: usize> {
         num_public_values: usize,
         is_zk: usize,
     ) -> usize;
+}
+
+pub trait PcsRecursiveGeneration<
+    Challenger,
+    InputProof,
+    Comm: CommitRecursiveVerif,
+    Domain,
+    F: Field,
+    EF,
+    const D: usize,
+> where
+    EF: ExtensionField<F>,
+{
+    fn generate_challenges_circuit(
+        circuit: &mut CircuitBuilder<F, D>,
+        challenger: &mut Challenger,
+        proof_wires: &ProofWires<D, Comm, InputProof>,
+    ) -> Vec<ChallengeWireId<D>>;
+
+    fn generate(&self, circuit: CircuitBuilder<F, D>, wires: &[ChallengeWireId<D>], inputs: &[EF]);
+    fn generate_proof(
+        &self,
+        circuit: CircuitBuilder<F, D>,
+        wires: &[ChallengeWireId<D>],
+        inputs: &[EF],
+    ) {
+    }
 }

@@ -1,7 +1,7 @@
 use std::array;
 
-use p3_field::Field;
-use p3_field::extension::BinomiallyExtendable;
+use p3_field::extension::{BinomialExtensionField, BinomiallyExtendable};
+use p3_field::{BasedVectorSpace, Field};
 
 use crate::air::alu::cols::{ExtAddEvent, ExtFieldOpEvent, ExtMulEvent, ExtSubEvent, FieldOpEvent};
 use crate::air::ext_alu_air::BinomialExtension;
@@ -293,18 +293,37 @@ impl<F: Field + BinomiallyExtendable<D>, const D: usize> Gate<F, D> for MulExten
             .try_into()
             .unwrap();
 
+        let res_wires = self.get_output_wires();
+        let res_opt: [Option<F>; D] = res_wires
+            .iter()
+            .map(|&wire| builder.get_wire_value(wire))
+            .collect::<Result<Vec<_>, _>>()?
+            .try_into()
+            .unwrap();
         for i in 0..D {
-            if input1[i].is_none() || input2[i].is_none() {
+            if input1[i].is_none() || (input2[i].is_none() && res_opt[i].is_none()) {
                 return Err(CircuitError::InputNotSet);
             }
         }
 
         let inp1 = array::from_fn(|i| input1[i].unwrap());
-        let inp1_ext = BinomialExtension(inp1);
-        let inp2 = array::from_fn(|i| input2[i].unwrap());
-        let inp2_ext = BinomialExtension(inp2);
-        let res = inp1_ext * inp2_ext;
-        builder.set_wire_values(&self.get_output_wires(), &res.0)?;
+        let inp1_ext = BinomialExtensionField::new(inp1);
+
+        let (inp2, res) = if input2.iter().any(|x| x.is_none()) {
+            let res = array::from_fn(|i| res_opt[i].unwrap());
+            let res_ext = BinomialExtensionField::new(res);
+            let inp2 = res_ext / inp1_ext;
+            let inp2_slice = inp2.as_basis_coefficients_slice();
+            builder.set_wire_values(&input2_wires, &inp2_slice)?;
+            (inp2_slice.try_into().unwrap(), res)
+        } else {
+            let inp2 = array::from_fn(|i| input2[i].unwrap());
+            let inp2_ext = BinomialExtensionField::new(inp2);
+            let res = inp1_ext * inp2_ext;
+            let res_slice = res.as_basis_coefficients_slice();
+            builder.set_wire_values(&input2_wires, &res_slice)?;
+            (inp2, res_slice.try_into().unwrap())
+        };
 
         all_events.ext_mul_events.push(ExtMulEvent(ExtFieldOpEvent {
             left_addr: [self.get_first_input_wires(); 1],
@@ -312,7 +331,7 @@ impl<F: Field + BinomiallyExtendable<D>, const D: usize> Gate<F, D> for MulExten
             right_addr: [self.get_second_input_wires(); 1],
             right_val: [inp2; 1],
             res_addr: [self.get_output_wires(); 1],
-            res_val: [res.0; 1],
+            res_val: [res; 1],
         }));
 
         Ok(())
