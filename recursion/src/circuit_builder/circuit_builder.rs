@@ -1,16 +1,11 @@
 use std::array;
 
-use p3_field::extension::BinomiallyExtendable;
 use p3_field::{ExtensionField, Field};
-use p3_uni_stark::{Entry, SymbolicExpression};
 
-use crate::circuit_builder::gates::arith_gates::{
-    AddExtensionGate, MulExtensionGate, SubExtensionGate,
-};
 use crate::circuit_builder::gates::event::AllEvents;
 use crate::circuit_builder::gates::gate::Gate;
 
-pub(crate) type WireId = usize;
+pub type WireId = usize;
 
 #[derive(Default)]
 pub struct CircuitBuilder<F: Field, const D: usize> {
@@ -103,6 +98,10 @@ impl<F: Field, const D: usize> CircuitBuilder<F, D> {
         self.set_wire_values(&ids, value)
     }
 
+    pub fn set_public_inputs(&mut self, ids: &[WireId], values: &[F]) -> Result<(), CircuitError> {
+        self.set_wire_values(ids, values)
+    }
+
     pub fn get_instances(&self) -> &Vec<Box<dyn Gate<F, D>>> {
         &self.gate_instances
     }
@@ -126,184 +125,9 @@ impl<F: Field, const D: usize> CircuitBuilder<F, D> {
 
 #[derive(Debug)]
 pub enum CircuitError {
+    RandomizationError,
+    InvalidProofShape,
     InvalidWireId,
     InputNotSet,
     WireSetTwice,
-}
-
-pub fn symbolic_to_circuit<F: Field, EF, const D: usize>(
-    is_first_row: ChallengeWireId<D>,
-    is_last_row: ChallengeWireId<D>,
-    is_transition: ChallengeWireId<D>,
-    challenges: &[ChallengeWireId<D>],
-    public_values: &[WireId],
-    local_prep_values: &[ChallengeWireId<D>],
-    next_prep_values: &[ChallengeWireId<D>],
-    local_values: &[ChallengeWireId<D>],
-    next_values: &[ChallengeWireId<D>],
-    symbolic: &SymbolicExpression<EF>,
-    circuit: &mut CircuitBuilder<F, D>,
-) -> ChallengeWireId<D>
-where
-    F: BinomiallyExtendable<D>,
-    EF: ExtensionField<F>,
-{
-    assert_eq!(D, EF::DIMENSION);
-    match symbolic {
-        SymbolicExpression::Constant(c) => circuit.add_challenge_constant(c.clone()),
-        SymbolicExpression::Variable(v) => match v.entry {
-            Entry::Preprocessed { offset } => {
-                if offset == 0 {
-                    local_prep_values[v.index].clone()
-                } else if offset == 1 {
-                    next_prep_values[v.index].clone()
-                } else {
-                    panic!("Cannot have expressions involving more than two rows.")
-                }
-            }
-            Entry::Main { offset } => {
-                if offset == 0 {
-                    local_values[v.index].clone()
-                } else if offset == 1 {
-                    next_values[v.index].clone()
-                } else {
-                    panic!("Cannot have expressions involving more than two rows.")
-                }
-            }
-            Entry::Public => {
-                let mut res = circuit.add_challenge_constant(EF::ZERO);
-                res[0] = public_values[v.index].clone();
-
-                res
-            }
-            Entry::Challenge => challenges[v.index].clone(),
-            _ => unimplemented!(),
-        },
-        SymbolicExpression::Add { x, y, .. } => {
-            let x_wire = symbolic_to_circuit::<F, EF, D>(
-                is_first_row.clone(),
-                is_last_row.clone(),
-                is_transition.clone(),
-                challenges,
-                public_values,
-                local_prep_values,
-                next_prep_values,
-                local_values,
-                next_values,
-                x,
-                circuit,
-            );
-            let y_wire = symbolic_to_circuit::<F, EF, D>(
-                is_first_row,
-                is_last_row,
-                is_transition,
-                challenges,
-                public_values,
-                local_prep_values,
-                next_prep_values,
-                local_values,
-                next_values,
-                y,
-                circuit,
-            );
-
-            let out_wire = circuit.new_challenge_wires();
-
-            AddExtensionGate::add_to_circuit(circuit, x_wire, y_wire, out_wire);
-
-            out_wire
-        }
-        SymbolicExpression::Mul { x, y, .. } => {
-            let x_wire = symbolic_to_circuit::<F, EF, D>(
-                is_first_row.clone(),
-                is_last_row.clone(),
-                is_transition.clone(),
-                challenges,
-                public_values,
-                local_prep_values,
-                next_prep_values,
-                local_values,
-                next_values,
-                x,
-                circuit,
-            );
-            let y_wire = symbolic_to_circuit::<F, EF, D>(
-                is_first_row,
-                is_last_row,
-                is_transition,
-                challenges,
-                public_values,
-                local_prep_values,
-                next_prep_values,
-                local_values,
-                next_values,
-                y,
-                circuit,
-            );
-
-            let out_wire = circuit.new_challenge_wires();
-
-            MulExtensionGate::add_to_circuit(circuit, x_wire, y_wire, out_wire);
-            out_wire
-        }
-        SymbolicExpression::Sub { x, y, .. } => {
-            let x_wire = symbolic_to_circuit::<F, EF, D>(
-                is_first_row.clone(),
-                is_last_row.clone(),
-                is_transition.clone(),
-                challenges,
-                public_values,
-                local_prep_values,
-                next_prep_values,
-                local_values,
-                next_values,
-                x,
-                circuit,
-            );
-            let y_wire = symbolic_to_circuit::<F, EF, D>(
-                is_first_row,
-                is_last_row,
-                is_transition,
-                challenges,
-                public_values,
-                local_prep_values,
-                next_prep_values,
-                local_values,
-                next_values,
-                y,
-                circuit,
-            );
-
-            let out_wire = circuit.new_challenge_wires();
-
-            SubExtensionGate::add_to_circuit(circuit, x_wire, y_wire, out_wire);
-
-            out_wire
-        }
-        SymbolicExpression::Neg { x, .. } => {
-            let x_wire = symbolic_to_circuit::<F, EF, D>(
-                is_first_row,
-                is_last_row,
-                is_transition,
-                challenges,
-                public_values,
-                local_prep_values,
-                next_prep_values,
-                local_values,
-                next_values,
-                x,
-                circuit,
-            );
-            let zero = circuit.add_challenge_constant(EF::ZERO);
-
-            let out_wire = circuit.new_challenge_wires();
-
-            SubExtensionGate::add_to_circuit(circuit, zero, x_wire, out_wire);
-
-            out_wire
-        }
-        SymbolicExpression::IsFirstRow => is_first_row,
-        SymbolicExpression::IsLastRow => is_last_row,
-        SymbolicExpression::IsTransition => is_transition,
-    }
 }

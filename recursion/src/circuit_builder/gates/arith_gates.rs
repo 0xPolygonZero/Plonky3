@@ -321,7 +321,7 @@ impl<F: Field + BinomiallyExtendable<D>, const D: usize> Gate<F, D> for MulExten
             let inp2_ext = BinomialExtensionField::new(inp2);
             let res = inp1_ext * inp2_ext;
             let res_slice = res.as_basis_coefficients_slice();
-            builder.set_wire_values(&input2_wires, &res_slice)?;
+            builder.set_wire_values(&res_wires, &res_slice)?;
             (inp2, res_slice.try_into().unwrap())
         };
 

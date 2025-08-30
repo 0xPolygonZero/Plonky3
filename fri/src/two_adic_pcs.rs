@@ -22,7 +22,7 @@ use p3_recursion::circuit_builder::gates::arith_gates::{MulExtensionGate, SubExt
 use p3_recursion::circuit_builder::{ChallengeWireId, CircuitBuilder};
 use p3_recursion::verifier::circuit_verifier::ProofWires;
 use p3_recursion::verifier::recursive_traits::{
-    CommitRecursiveVerif, PcsRecursiveGeneration, PcsRecursiveVerif, RecursiveLagrangeSels,
+    CommitRecursiveVerif, PcsRecursiveVerif, RecursiveLagrangeSels,
 };
 
 use itertools::{Itertools, izip};
@@ -626,7 +626,7 @@ fn compute_inverse_denominators<F: TwoAdicField, EF: ExtensionField<F>, M: Matri
 
 impl<Dft, InputMmcs: Mmcs<F>, FriMmcs, F: TwoAdicField, EF, const D: usize>
     PcsRecursiveVerif<
-        TwoAdicFriFoldingForMmcs<F, InputMmcs>,
+        Vec<BatchOpening<F, InputMmcs>>,
         InputMmcs::Commitment,
         TwoAdicMultiplicativeCoset<F>,
         F,
@@ -640,7 +640,7 @@ where
 {
     fn get_challenges_circuit(
         circuit: &mut CircuitBuilder<F, D>,
-        proof_wires: &ProofWires<D, InputMmcs::Commitment, TwoAdicFriFoldingForMmcs<F, InputMmcs>>,
+        proof_wires: &ProofWires<D, InputMmcs::Commitment, Vec<BatchOpening<F, InputMmcs>>>,
     ) -> Vec<ChallengeWireId<D>> {
         let num_challenges = 1
             + proof_wires.fri_proof.commit_phase_commits.len()
@@ -657,9 +657,14 @@ where
     fn verify_circuit(
         &self,
         _circuit: &mut CircuitBuilder<F, D>,
-        _zeta: ChallengeWireId<D>,
-        _zeta_next: ChallengeWireId<D>,
         _challenges: &[ChallengeWireId<D>],
+        _commitments_with_opening_points: &[(
+            &InputMmcs::Commitment,
+            Vec<(
+                TwoAdicMultiplicativeCoset<F>,
+                Vec<([usize; D], Vec<[usize; D]>)>,
+            )>,
+        )],
     ) {
         // For now, the verification doesn't do anything: we need the implementation of the FRI table first.
         // Regarding the challenges, we only need interactions with the sponge tables.
@@ -682,7 +687,7 @@ where
             InputMmcs,
             FriMmcs,
         > as PcsRecursiveVerif<
-            TwoAdicFriFolding<Vec<BatchOpening<F, InputMmcs>>, <InputMmcs as Mmcs<F>>::Error>,
+            Vec<BatchOpening<F, InputMmcs>>,
             <InputMmcs as Mmcs<F>>::Commitment,
             TwoAdicMultiplicativeCoset<F>,
             F,
@@ -752,31 +757,5 @@ where
 
     fn first_point(&self, trace_domain: &TwoAdicMultiplicativeCoset<F>) -> F {
         trace_domain.first_point()
-    }
-}
-
-impl<Challenger, Dft, InputMmcs: Mmcs<F>, FriMmcs, F: TwoAdicField, EF, const D: usize>
-    PcsRecursiveGeneration<
-        Challenger,
-        TwoAdicFriFoldingForMmcs<F, InputMmcs>,
-        InputMmcs::Commitment,
-        TwoAdicMultiplicativeCoset<F>,
-        F,
-        EF,
-        D,
-    > for TwoAdicFriPcs<F, Dft, InputMmcs, FriMmcs>
-where
-    InputMmcs::Commitment: CommitRecursiveVerif,
-    EF: ExtensionField<F>,
-{
-    fn generate_challenges_circuit(
-        circuit: &mut CircuitBuilder<F, D>,
-        challenger: &mut Challenger,
-        proof_wires: &ProofWires<D, InputMmcs::Commitment, TwoAdicFriFoldingForMmcs<F, InputMmcs>>,
-    ) -> Vec<ChallengeWireId<D>> {
-        vec![]
-    }
-
-    fn generate(&self, circuit: CircuitBuilder<F, D>, wires: &[ChallengeWireId<D>], inputs: &[EF]) {
     }
 }

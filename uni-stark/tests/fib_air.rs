@@ -1,21 +1,27 @@
 use core::borrow::Borrow;
+use std::array;
 
+use itertools::Itertools;
 use p3_air::{Air, AirBuilder, AirBuilderWithPublicValues, BaseAir};
 use p3_baby_bear::{BabyBear, Poseidon2BabyBear};
 use p3_challenger::{DuplexChallenger, HashChallenger, SerializingChallenger32};
 use p3_commit::ExtensionMmcs;
 use p3_dft::Radix2DitParallel;
 use p3_field::extension::BinomialExtensionField;
-use p3_field::{Field, PrimeCharacteristicRing, PrimeField64};
+use p3_field::{BasedVectorSpace, Field, PrimeCharacteristicRing, PrimeField64};
 use p3_fri::{HidingFriPcs, TwoAdicFriPcs, create_test_fri_params};
 use p3_keccak::{Keccak256Hash, KeccakF};
 use p3_matrix::Matrix;
 use p3_matrix::dense::RowMajorMatrix;
 use p3_merkle_tree::{MerkleTreeHidingMmcs, MerkleTreeMmcs};
+use p3_recursion::circuit_builder::CircuitBuilder;
 use p3_symmetric::{
     CompressionFunctionFromHasher, PaddingFreeSponge, SerializingHasher, TruncatedPermutation,
 };
-use p3_uni_stark::{StarkConfig, prove, verify};
+use p3_uni_stark::{
+    StarkConfig, SymbolicExpression, get_symbolic_constraints, prove, symbolic_to_circuit, verify,
+    verify_with_return_values,
+};
 use rand::SeedableRng;
 use rand::rngs::SmallRng;
 
@@ -112,7 +118,8 @@ type MyHash = PaddingFreeSponge<Perm, 16, 8, 8>;
 type MyCompress = TruncatedPermutation<Perm, 2, 8, 16>;
 type ValMmcs =
     MerkleTreeMmcs<<Val as Field>::Packing, <Val as Field>::Packing, MyHash, MyCompress, 8>;
-type Challenge = BinomialExtensionField<Val, 4>;
+const D: usize = 4;
+type Challenge = BinomialExtensionField<Val, D>;
 type ChallengeMmcs = ExtensionMmcs<Val, Challenge, ValMmcs>;
 type Challenger = DuplexChallenger<Val, Perm, 16, 8>;
 type Dft = Radix2DitParallel<Val>;
@@ -221,4 +228,158 @@ fn test_incorrect_public_value() {
         BabyBear::from_u32(123_123), // incorrect result
     ];
     prove(&config, &FibonacciAir {}, trace, &pis);
+}
+
+#[test]
+fn test_symbolic_to_circuit() {
+    type ByteHash = Keccak256Hash;
+    let byte_hash = ByteHash {};
+
+    type U64Hash = PaddingFreeSponge<KeccakF, 25, 17, 4>;
+    let u64_hash = U64Hash::new(KeccakF {});
+
+    type FieldHash = SerializingHasher<U64Hash>;
+    let field_hash = FieldHash::new(u64_hash);
+
+    type MyCompress = CompressionFunctionFromHasher<U64Hash, 2, 4>;
+    let compress = MyCompress::new(u64_hash);
+
+    type ValHidingMmcs = MerkleTreeHidingMmcs<
+        [Val; p3_keccak::VECTOR_LEN],
+        [u64; p3_keccak::VECTOR_LEN],
+        FieldHash,
+        MyCompress,
+        SmallRng,
+        4,
+        4,
+    >;
+
+    let rng = SmallRng::seed_from_u64(1);
+    let val_mmcs = ValHidingMmcs::new(field_hash, compress, rng);
+
+    type Challenger = SerializingChallenger32<Val, HashChallenger<u8, ByteHash, 32>>;
+
+    type ChallengeHidingMmcs = ExtensionMmcs<Val, Challenge, ValHidingMmcs>;
+
+    let n = 1 << 3;
+    let x = 21;
+
+    let challenge_mmcs = ChallengeHidingMmcs::new(val_mmcs.clone());
+    let dft = Dft::default();
+    let trace = generate_trace_rows::<Val>(0, 1, n);
+    let fri_params = create_test_fri_params(challenge_mmcs, 2);
+    type HidingPcs = HidingFriPcs<Val, Dft, ValHidingMmcs, ChallengeHidingMmcs, SmallRng>;
+    type MyHidingConfig = StarkConfig<HidingPcs, Challenge, Challenger>;
+    let pcs = HidingPcs::new(dft, val_mmcs, fri_params, 4, SmallRng::seed_from_u64(1));
+    let challenger = Challenger::from_hasher(vec![], byte_hash);
+    let config = MyHidingConfig::new(pcs, challenger);
+    let pis = vec![BabyBear::ZERO, BabyBear::ONE, BabyBear::from_u64(x)];
+    let proof = prove(&config, &FibonacciAir {}, trace, &pis);
+    let _ = verify(&config, &FibonacciAir {}, &proof, &pis).expect("verification failed");
+
+    let air = FibonacciAir {};
+    let (alpha, sels, folded_constraints) =
+        verify_with_return_values(&config, &air, &proof, &pis).expect("verification failed");
+
+    let symbolic_constraints: Vec<p3_uni_stark::SymbolicExpression<Challenge>> =
+        get_symbolic_constraints(&air, 0, pis.len());
+
+    let folded_symbolic_constraints = {
+        let mut acc = SymbolicExpression::<Challenge>::Constant(Challenge::ZERO);
+        let ch = SymbolicExpression::Constant(alpha);
+        for s_c in symbolic_constraints.iter() {
+            acc = ch.clone() * acc;
+            acc += s_c.clone();
+        }
+        acc
+    };
+
+    let mut circuit = CircuitBuilder::<Val, D>::new();
+    let circuit_sels = [
+        circuit.new_challenge_wires(),
+        circuit.new_challenge_wires(),
+        circuit.new_challenge_wires(),
+    ];
+    let circuit_public_values = [circuit.new_wire(), circuit.new_wire(), circuit.new_wire()];
+    let mut circuit_local_values = Vec::with_capacity(NUM_FIBONACCI_COLS);
+    let mut circuit_next_values = Vec::with_capacity(NUM_FIBONACCI_COLS);
+    for _ in 0..NUM_FIBONACCI_COLS {
+        circuit_local_values.push(circuit.new_challenge_wires());
+        circuit_next_values.push(circuit.new_challenge_wires());
+    }
+
+    // let pis_extension = pis.iter().map(|&x| Challenge::from(x)).collect::<Vec<_>>();
+    let sum = symbolic_to_circuit::<Val, Challenge, D>(
+        circuit_sels[0].clone(),
+        circuit_sels[1].clone(),
+        circuit_sels[2].clone(),
+        &[],
+        &circuit_public_values,
+        &[],
+        &[],
+        &circuit_local_values,
+        &circuit_next_values,
+        &folded_symbolic_constraints,
+        &mut circuit,
+    );
+
+    let local_values = &proof.opened_values.trace_local;
+    let next_values = &proof.opened_values.trace_next;
+
+    // Set selectors.
+    circuit
+        .set_challenge_wires(
+            circuit_sels[0],
+            sels.is_first_row
+                .as_basis_coefficients_slice()
+                .try_into()
+                .unwrap(),
+        )
+        .unwrap();
+    circuit
+        .set_challenge_wires(
+            circuit_sels[1],
+            sels.is_last_row
+                .as_basis_coefficients_slice()
+                .try_into()
+                .unwrap(),
+        )
+        .unwrap();
+    circuit
+        .set_challenge_wires(
+            circuit_sels[2],
+            sels.is_transition
+                .as_basis_coefficients_slice()
+                .try_into()
+                .unwrap(),
+        )
+        .unwrap();
+
+    // Set public values.
+    for (i, pi) in pis.iter().enumerate() {
+        circuit
+            .set_wire_value(circuit_public_values[i], *pi)
+            .unwrap();
+    }
+
+    // Set local and next values.
+    for (lv, c_lv) in local_values.iter().zip_eq(circuit_local_values) {
+        circuit
+            .set_challenge_wires(c_lv, lv.as_basis_coefficients_slice().try_into().unwrap())
+            .unwrap();
+    }
+    for (nv, c_nv) in next_values.iter().zip_eq(circuit_next_values) {
+        circuit
+            .set_challenge_wires(c_nv, nv.as_basis_coefficients_slice().try_into().unwrap())
+            .unwrap();
+    }
+
+    let _ = circuit.generate();
+
+    let challenge_sum = Challenge::from_basis_coefficients_slice(&array::from_fn::<_, D, _>(|i| {
+        circuit.get_wire_value(sum[i]).unwrap().unwrap()
+    }))
+    .unwrap();
+
+    assert!(folded_constraints == challenge_sum);
 }

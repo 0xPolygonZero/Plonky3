@@ -1,23 +1,34 @@
-use p3_uni_stark::{Proof, StarkGenericConfig, Val, prove as base_prove};
-
 use crate::air::AluAir;
 use crate::air::alu::air::FieldOperation;
 use crate::air::asic::Asic;
 use crate::circuit_builder::gates::event::AllEvents;
-pub struct RecursiveProof<SC: StarkGenericConfig, const D: usize> {
+use crate::verifier::recursive_traits::RecursiveStarkGenerationConfig;
+pub struct RecursiveProof<
+    InputProof,
+    SC: RecursiveStarkGenerationConfig<InputProof, D>,
+    P,
+    const D: usize,
+> {
     pub add_air: AluAir<1>,
     pub sub_air: AluAir<1>,
-    pub add_proof: Proof<SC>,
-    pub sub_proof: Proof<SC>,
+    pub add_proof: P,
+    pub sub_proof: P,
+    _phantom: std::marker::PhantomData<(InputProof, SC)>,
 }
 
-pub fn prove<SC, const D: usize>(
+pub fn prove<P, InputProof, SC, const D: usize>(
     config: &SC,
-    asic: Asic<Val<SC>, D>,
-    all_events: AllEvents<Val<SC>, D>,
-) -> RecursiveProof<SC, D>
+    asic: Asic<SC::Val, D>,
+    all_events: AllEvents<SC::Val, D>,
+    base_prove: fn(
+        &SC,
+        &AluAir<1>,
+        p3_matrix::dense::RowMajorMatrix<SC::Val>,
+        &Vec<Vec<usize>>,
+    ) -> P,
+) -> RecursiveProof<InputProof, SC, P, D>
 where
-    SC: StarkGenericConfig,
+    SC: RecursiveStarkGenerationConfig<InputProof, D>,
 {
     let traces = asic.generate_trace(&all_events);
 
@@ -36,5 +47,6 @@ where
         sub_air,
         add_proof,
         sub_proof,
+        _phantom: std::marker::PhantomData,
     }
 }

@@ -1,5 +1,4 @@
-use p3_field::{ExtensionField, Field};
-use p3_uni_stark::{Domain, StarkGenericConfig};
+use p3_field::{ExtensionField, Field, extension::BinomiallyExtendable};
 
 use crate::{
     circuit_builder::{ChallengeWireId, CircuitBuilder, WireId},
@@ -8,6 +7,18 @@ use crate::{
 
 pub trait CommitRecursiveVerif {
     fn get_commit_challenges_circuit() -> Vec<WireId>;
+}
+
+pub trait RecursiveStarkGenerationConfig<InputProof, const D: usize> {
+    type Val: Field + BinomiallyExtendable<D>;
+    type Domain: Copy;
+    type Challenge: ExtensionField<Self::Val>;
+    type Comm: CommitRecursiveVerif;
+    type Pcs: PcsRecursiveVerif<InputProof, Self::Comm, Self::Domain, Self::Val, Self::Challenge, D>;
+
+    fn pcs(&self) -> Self::Pcs;
+
+    fn is_zk(&self) -> usize;
 }
 
 pub trait PcsRecursiveVerif<
@@ -28,9 +39,11 @@ pub trait PcsRecursiveVerif<
     fn verify_circuit(
         &self,
         circuit: &mut CircuitBuilder<F, D>,
-        zeta: ChallengeWireId<D>,
-        zeta_next: ChallengeWireId<D>,
         challenges: &[ChallengeWireId<D>],
+        commitments_with_opening_points: &[(
+            &Comm,
+            Vec<(Domain, Vec<([usize; D], Vec<[usize; D]>)>)>,
+        )],
     );
 
     fn selectors_at_point_circuit(
@@ -58,7 +71,7 @@ pub struct RecursiveLagrangeSels<const D: usize> {
     pub inv_vanishing: ChallengeWireId<D>,
 }
 
-pub trait RecursiveAir<SC: StarkGenericConfig, F: Field, const D: usize> {
+pub trait RecursiveAir<F: Field, const D: usize> {
     type Var: Clone;
 
     fn width(&self) -> usize;
@@ -77,31 +90,4 @@ pub trait RecursiveAir<SC: StarkGenericConfig, F: Field, const D: usize> {
         num_public_values: usize,
         is_zk: usize,
     ) -> usize;
-}
-
-pub trait PcsRecursiveGeneration<
-    Challenger,
-    InputProof,
-    Comm: CommitRecursiveVerif,
-    Domain,
-    F: Field,
-    EF,
-    const D: usize,
-> where
-    EF: ExtensionField<F>,
-{
-    fn generate_challenges_circuit(
-        circuit: &mut CircuitBuilder<F, D>,
-        challenger: &mut Challenger,
-        proof_wires: &ProofWires<D, Comm, InputProof>,
-    ) -> Vec<ChallengeWireId<D>>;
-
-    fn generate(&self, circuit: CircuitBuilder<F, D>, wires: &[ChallengeWireId<D>], inputs: &[EF]);
-    fn generate_proof(
-        &self,
-        circuit: CircuitBuilder<F, D>,
-        wires: &[ChallengeWireId<D>],
-        inputs: &[EF],
-    ) {
-    }
 }
