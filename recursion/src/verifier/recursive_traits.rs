@@ -6,7 +6,15 @@ use crate::{
 };
 
 pub trait CommitRecursiveVerif {
-    fn get_commit_challenges_circuit() -> Vec<WireId>;
+    /// Returns a vec of field elements representing one commitment.
+    fn get_wires(&self) -> Vec<WireId>;
+}
+
+pub trait CommitForRecursiveVerif<F: Field> {
+    // fn get_commit_challenges_circuit(circuit: &mut CircuitBuilder<F, D>) -> Vec<WireId>;
+
+    /// Returns a vec of field elements representing one commitment.
+    fn get_values(&self) -> Vec<F>;
 }
 
 pub trait RecursiveStarkGenerationConfig<InputProof, const D: usize> {
@@ -33,7 +41,7 @@ pub trait PcsRecursiveVerif<
 {
     fn get_challenges_circuit(
         circuit: &mut CircuitBuilder<F, D>,
-        proof_wires: &ProofWires<D, Comm, InputProof>,
+        proof_wires: &ProofWires<F, D, Comm, InputProof>,
     ) -> Vec<ChallengeWireId<D>>;
 
     fn verify_circuit(
@@ -72,15 +80,17 @@ pub struct RecursiveLagrangeSels<const D: usize> {
 }
 
 pub trait RecursiveAir<F: Field, const D: usize> {
-    type Var: Clone;
-
     fn width(&self) -> usize;
 
-    fn eval_folded_circuit(
+    fn eval_folded_circuit<EF: ExtensionField<F>>(
         &self,
         builder: &mut CircuitBuilder<F, D>,
         sels: &RecursiveLagrangeSels<D>,
         alpha: &ChallengeWireId<D>,
+        local_prep_values: &[ChallengeWireId<D>],
+        next_prep_values: &[ChallengeWireId<D>],
+        local_values: &[ChallengeWireId<D>],
+        next_values: &[ChallengeWireId<D>],
         public_values: &[WireId],
     ) -> ChallengeWireId<D>;
 

@@ -1,9 +1,21 @@
+use std::marker::PhantomData;
+
 use itertools::Itertools;
 use itertools::zip_eq;
+use p3_challenger::CanObserve;
+use p3_challenger::CanSampleBits;
+use p3_challenger::FieldChallenger;
+use p3_commit::Pcs;
+use p3_commit::PolynomialSpace;
 use p3_field::BasedVectorSpace;
+use p3_field::ExtensionField;
 use p3_field::Field;
 use p3_field::PrimeCharacteristicRing;
 use p3_field::extension::BinomiallyExtendable;
+use p3_uni_stark::Domain;
+use p3_uni_stark::Proof;
+use p3_uni_stark::StarkGenericConfig;
+use p3_uni_stark::Val;
 
 use crate::circuit_builder::ChallengeWireId;
 use crate::circuit_builder::CircuitError;
@@ -11,17 +23,19 @@ use crate::circuit_builder::gates::arith_gates::AddExtensionGate;
 use crate::circuit_builder::gates::arith_gates::MulExtensionGate;
 use crate::circuit_builder::gates::arith_gates::SubExtensionGate;
 use crate::circuit_builder::{CircuitBuilder, WireId};
+use crate::verifier::recursive_traits::CommitForRecursiveVerif;
 use crate::verifier::recursive_traits::CommitRecursiveVerif;
 use crate::verifier::recursive_traits::PcsRecursiveVerif;
 use crate::verifier::recursive_traits::RecursiveAir;
 use crate::verifier::recursive_traits::RecursiveStarkGenerationConfig;
 
 #[derive(Clone)]
-pub struct FriProofWires<Comm: CommitRecursiveVerif, InputProof> {
+pub struct FriProofWires<F: Field, const D: usize, Comm: CommitRecursiveVerif, InputProof> {
     pub commit_phase_commits: Vec<Comm>,
     pub query_proofs: Vec<QueryProofWires<InputProof>>,
     pub final_poly: Vec<usize>,
     pub pow_witness: usize,
+    _phantom_data: PhantomData<F>,
 }
 
 #[derive(Clone)]
@@ -52,202 +66,233 @@ pub struct OpenedValuesWires<const D: usize> {
     pub random: Option<Vec<ChallengeWireId<D>>>,
 }
 
-// // Simulated method as we don't have the sponges yet.
-// pub fn generate_challenges<
-//     SC: StarkGenericConfig,
-//     InputProof,
-//     const D: usize,
-//     const DIGEST_ELEMS: usize,
-// >(
-//     config: &SC,
-//     circuit: &mut CircuitBuilder<Val<SC>, D>,
-//     proof_wires: &ProofWires<D, DIGEST_ELEMS, InputProof>,
-//     public_values: &Vec<WireId>,
-//     challenges: &Vec<ChallengeWireId<D>>,
-//     init_trace_domain: &Domain<SC>,
-// ) {
-//     // This assumes that the public values and proof inputs are already set up in the circuit.
-//     let mut challenger = config.initialise_challenger();
-//     let mut challenge_values: Vec<SC::Challenge> = vec![];
-//     let ProofWires {
-//         commitments_wires:
-//             CommitmentWires {
-//                 trace_wires,
-//                 quotient_chunks_wires,
-//                 random_commit,
-//             },
-//         opened_values_wires:
-//             OpenedValuesWires {
-//                 trace_local_wires,
-//                 trace_next_wires,
-//                 quotient_chunks_wires: opened_quotient_chunks_wires,
-//                 random,
-//             },
-//         fri_proof:
-//             FriProofWires {
-//                 commit_phase_commits,
-//                 query_proofs,
-//                 final_poly,
-//                 pow_witness: _,
-//             },
-//         degree_bits,
-//     } = proof_wires;
+// Simulated method as we don't have the sponges yet.
+pub fn generate_challenges<
+    SC: StarkGenericConfig,
+    Comm: CommitRecursiveVerif,
+    InputProof,
+    const D: usize,
+    const DIGEST_ELEMS: usize,
+>(
+    config: &SC,
+    circuit: &mut CircuitBuilder<Val<SC>, D>,
+    proof_wires: &ProofWires<Val<SC>, D, Comm, InputProof>,
+    proof: &Proof<SC>,
+    public_values: &Vec<WireId>,
+    challenges: &Vec<ChallengeWireId<D>>,
+    init_trace_domain: &Domain<SC>,
+) where
+    <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Commitment: CommitForRecursiveVerif<Val<SC>>,
+{
+    // This assumes that the public values and proof inputs are already set up in the circuit.
+    let mut challenger = config.initialise_challenger();
+    let mut challenge_values: Vec<SC::Challenge> = vec![];
+    let ProofWires {
+        commitments_wires:
+            CommitmentWires {
+                trace_wires,
+                quotient_chunks_wires,
+                random_commit,
+            },
+        opened_values_wires:
+            OpenedValuesWires {
+                trace_local_wires,
+                trace_next_wires,
+                quotient_chunks_wires: opened_quotient_chunks_wires,
+                random,
+            },
+        fri_proof:
+            FriProofWires {
+                commit_phase_commits,
+                query_proofs,
+                final_poly,
+                pow_witness: _,
+                _phantom_data: _,
+            },
+        degree_bits: _,
+    } = proof_wires;
 
-//     challenger.observe(Val::<SC>::from_usize(*degree_bits));
-//     challenger.observe(Val::<SC>::from_usize(*degree_bits - config.is_zk()));
+    let Proof {
+        commitments,
+        opened_values,
+        opening_proof,
+        degree_bits,
+    } = proof;
 
-//     let local_wire_vals = trace_wires
-//         .iter()
-//         .map(|wire| circuit.get_wire_value(*wire).unwrap().unwrap());
-//     for v in local_wire_vals {
-//         challenger.observe(v.as_base().expect("The output should be a basis element"));
-//     }
+    challenger.observe(Val::<SC>::from_usize(*degree_bits));
+    challenger.observe(Val::<SC>::from_usize(*degree_bits - config.is_zk()));
 
-//     let public_values_vals = public_values
-//         .iter()
-//         .map(|wire| {
-//             circuit
-//                 .get_wire_value(*wire)
-//                 .unwrap()
-//                 .unwrap()
-//                 .as_base()
-//                 .unwrap()
-//         })
-//         .collect::<Vec<_>>();
-//     challenger.observe_slice(&public_values_vals);
-//     // 1
-//     challenge_values.push(challenger.sample_algebra_element());
+    let local_comm = commitments.trace.get_values();
+    let local_comm_wires = <Comm as CommitRecursiveVerif>::get_wires(trace_wires);
 
-//     let quotient_chunk_com_vals = quotient_chunks_wires
-//         .iter()
-//         .map(|wire| {
-//             circuit
-//                 .get_wire_value(*wire)
-//                 .unwrap()
-//                 .unwrap()
-//                 .as_base()
-//                 .unwrap()
-//         })
-//         .collect::<Vec<_>>();
-//     challenger.observe_slice(&quotient_chunk_com_vals);
+    // for v in local_wire_vals {
+    //     challenger.observe(v.as_base().expect("The output should be a basis element"));
+    // }
 
-//     if let Some(r_commit) = random_commit {
-//         let r_commit_vals = r_commit
-//             .iter()
-//             .map(|wire| {
-//                 circuit
-//                     .get_wire_value(*wire)
-//                     .unwrap()
-//                     .unwrap()
-//                     .as_base()
-//                     .unwrap()
-//             })
-//             .collect::<Vec<_>>();
-//         challenger.observe_slice(&r_commit_vals);
-//     }
+    let public_values_vals = public_values
+        .iter()
+        .map(|wire| {
+            circuit
+                .get_wire_value(*wire)
+                .unwrap()
+                .unwrap()
+                .as_base()
+                .unwrap()
+        })
+        .collect::<Vec<_>>();
+    challenger.observe_slice(&local_comm);
+    // 1
+    challenge_values.push(challenger.sample_algebra_element());
 
-//     let zeta = challenger.sample_algebra_element();
-//     // 2 and 3
-//     challenge_values.push(zeta);
-//     let zeta_next = init_trace_domain.next_point(zeta).unwrap();
-//     challenge_values.push(zeta_next);
+    let quotient_chunks_comm_wires = quotient_chunks_wires.get_wires();
+    let quotient_chunks_vals = commitments.quotient_chunks.get_values();
+    circuit
+        .set_wire_values(&quotient_chunks_comm_wires, quotient_chunks_vals.as_slice())
+        .unwrap();
 
-//     let mut coms_to_verify = if let Some(r_commit) = &random_commit {
-//         let random_values = random.as_ref().unwrap();
-//         vec![(r_commit.clone(), vec![vec![(zeta, random_values.clone())]])]
-//     } else {
-//         vec![]
-//     };
-//     coms_to_verify.extend(vec![
-//         (
-//             trace_wires.clone(),
-//             vec![vec![
-//                 (zeta, trace_local_wires.clone()),
-//                 (zeta_next, trace_next_wires.clone()),
-//             ]],
-//         ),
-//         (
-//             quotient_chunks_wires.clone(),
-//             // Check the commitment on the randomized domains.
-//             opened_quotient_chunks_wires
-//                 .iter()
-//                 .map(|w| vec![(zeta, w.clone())])
-//                 .collect::<Vec<_>>(),
-//         ),
-//     ]);
+    // let quotient_chunk_com_vals = quotient_chunks_wires
+    //     .iter()
+    //     .map(|wire| {
+    //         circuit
+    //             .get_wire_value(*wire)
+    //             .unwrap()
+    //             .unwrap()
+    //             .as_base()
+    //             .unwrap()
+    //     })
+    //     .collect::<Vec<_>>();
+    challenger.observe_slice(&quotient_chunks_vals);
 
-//     for (_, round) in &coms_to_verify {
-//         for mat in round {
-//             for (_, point) in mat {
-//                 point.iter().for_each(|&opening| {
-//                     for o in opening {
-//                         challenger.observe(
-//                             circuit
-//                                 .get_wire_value(o)
-//                                 .unwrap()
-//                                 .unwrap()
-//                                 .as_base()
-//                                 .unwrap(),
-//                         )
-//                     }
-//                 })
-//             }
-//         }
-//     }
+    if let Some(r_commit) = commitments.random.as_ref() {
+        let r_commit_vals = r_commit.get_values();
+        // let r_commit_vals = r_commit
+        //     .iter()
+        //     .map(|wire| {
+        //         circuit
+        //             .get_wire_value(*wire)
+        //             .unwrap()
+        //             .unwrap()
+        //             .as_base()
+        //             .unwrap()
+        //     })
+        //     .collect::<Vec<_>>();
+        challenger.observe_slice(&r_commit_vals);
+    }
 
-//     // FRI challenges.
-//     // Batch combination challenge.
-//     challenge_values.push(challenger.sample_algebra_element());
+    let zeta = challenger.sample_algebra_element();
+    // 2 and 3
+    challenge_values.push(zeta);
+    let zeta_next = init_trace_domain.next_point(zeta).unwrap();
+    challenge_values.push(zeta_next);
 
-//     // betas
-//     commit_phase_commits.iter().for_each(|comm_wires| {
-//         let comm = comm_wires
-//             .iter()
-//             .map(|wire| {
-//                 circuit
-//                     .get_wire_value(*wire)
-//                     .unwrap()
-//                     .unwrap()
-//                     .as_base()
-//                     .unwrap()
-//             })
-//             .collect::<Vec<_>>();
-//         challenger.observe_slice(&comm);
-//         challenge_values.push(challenger.sample_algebra_element());
-//     });
+    let mut coms_to_verify = if let Some(r_commit) = &random_commit {
+        let random_values = random.as_ref().unwrap();
+        vec![(r_commit.clone(), vec![vec![(zeta, random_values.clone())]])]
+    } else {
+        vec![]
+    };
+    coms_to_verify.extend(vec![
+        (
+            trace_wires.clone(),
+            vec![vec![
+                (zeta, trace_local_wires.clone()),
+                (zeta_next, trace_next_wires.clone()),
+            ]],
+        ),
+        (
+            quotient_chunks_wires.clone(),
+            // Check the commitment on the randomized domains.
+            opened_quotient_chunks_wires
+                .iter()
+                .map(|w| vec![(zeta, w.clone())])
+                .collect::<Vec<_>>(),
+        ),
+    ]);
 
-//     final_poly.iter().for_each(|x| {
-//         let value = circuit
-//             .get_wire_value(*x)
-//             .unwrap()
-//             .unwrap()
-//             .as_base()
-//             .unwrap();
-//         challenger.observe(value);
-//     });
+    for (_, round) in &coms_to_verify {
+        for mat in round {
+            for (_, point) in mat {
+                point.iter().for_each(|&opening| {
+                    for o in opening {
+                        challenger.observe(
+                            circuit
+                                .get_wire_value(o)
+                                .unwrap()
+                                .unwrap()
+                                .as_base()
+                                .unwrap(),
+                        )
+                    }
+                })
+            }
+        }
+    }
 
-//     let (log_blowup, log_final_poly_len) = config.pcs().get_log_blowup_final_height();
-//     let log_max_height = commit_phase_commits.len() + log_blowup + log_final_poly_len;
+    // FRI challenges.
+    // Batch combination challenge.
+    challenge_values.push(challenger.sample_algebra_element());
 
-//     for _query_proof in query_proofs {
-//         challenge_values.push(SC::Challenge::from_usize(
-//             // extra_query_bits = 0 for two-adic pcs.
-//             challenger.sample_bits(log_max_height),
-//         ));
-//     }
+    // betas
+    commit_phase_commits.iter().for_each(|comm_wires| {
+        let comm = comm_wires
+            .get_wires()
+            .iter()
+            .map(|wire| {
+                circuit
+                    .get_wire_value(*wire)
+                    .unwrap()
+                    .unwrap()
+                    .as_base()
+                    .unwrap()
+            })
+            .collect::<Vec<_>>();
+        // let comm = comm_wires
+        //     .iter()
+        //     .map(|wire| {
+        //         circuit
+        //             .get_wire_value(*wire)
+        //             .unwrap()
+        //             .unwrap()
+        //             .as_base()
+        //             .unwrap()
+        //     })
+        //     .collect::<Vec<_>>();
+        challenger.observe_slice(&comm);
+        challenge_values.push(challenger.sample_algebra_element());
+    });
 
-//     for (c, c_v) in challenges.iter().zip_eq(challenge_values.iter()) {
-//         let challenge_vals = c_v.as_basis_coefficients_slice().try_into().unwrap();
-//         circuit.set_challenge_wires(*c, challenge_vals).unwrap();
-//     }
-// }
+    final_poly.iter().for_each(|x| {
+        let value = circuit
+            .get_wire_value(*x)
+            .unwrap()
+            .unwrap()
+            .as_base()
+            .unwrap();
+        challenger.observe(value);
+    });
+
+    let (log_blowup, log_final_poly_len) = config.pcs().get_log_blowup_final_height();
+    let log_max_height = commit_phase_commits.len() + log_blowup + log_final_poly_len;
+
+    for _query_proof in query_proofs {
+        challenge_values.push(SC::Challenge::from_usize(
+            // extra_query_bits = 0 for two-adic pcs.
+            challenger.sample_bits(log_max_height),
+        ));
+    }
+
+    for (c, c_v) in challenges.iter().zip_eq(challenge_values.iter()) {
+        let challenge_vals = c_v.as_basis_coefficients_slice().try_into().unwrap();
+        circuit.set_challenge_wires(*c, challenge_vals).unwrap();
+    }
+}
 
 fn get_circuit_challenges<
     SC: RecursiveStarkGenerationConfig<InputProof, D>,
     const D: usize,
     InputProof,
 >(
-    proof_wires: &ProofWires<D, SC::Comm, InputProof>,
+    proof_wires: &ProofWires<SC::Val, D, SC::Comm, InputProof>,
     circuit: &mut CircuitBuilder<SC::Val, D>,
 ) -> Vec<ChallengeWireId<D>> {
     let mut challenges = vec![];
@@ -288,10 +333,10 @@ fn get_circuit_challenges<
 }
 
 #[derive(Clone)]
-pub struct ProofWires<const D: usize, Comm: CommitRecursiveVerif, InputProof> {
+pub struct ProofWires<F: Field, const D: usize, Comm: CommitRecursiveVerif, InputProof> {
     pub commitments_wires: CommitmentWires<Comm>,
     pub opened_values_wires: OpenedValuesWires<D>,
-    pub fri_proof: FriProofWires<Comm, InputProof>,
+    pub fri_proof: FriProofWires<F, D, Comm, InputProof>,
     degree_bits: usize,
 }
 
@@ -304,7 +349,7 @@ pub fn verify_circuit<
 >(
     config: &SC,
     air: &A,
-    proof_wires: &ProofWires<D, SC::Comm, InputProof>,
+    proof_wires: &ProofWires<SC::Val, D, SC::Comm, InputProof>,
     public_values: &Vec<WireId>,
 ) -> Result<(), CircuitError>
 where
@@ -334,6 +379,7 @@ where
                 query_proofs: _,
                 final_poly: _,
                 pow_witness: _,
+                _phantom_data: _,
             },
         degree_bits,
     } = proof_wires;
@@ -483,7 +529,16 @@ where
     }
 
     let sels = pcs.selectors_at_point_circuit(&mut circuit, &init_trace_domain, &zeta);
-    let folded_constraints = air.eval_folded_circuit(&mut circuit, &sels, &alpha, &public_values);
+    let folded_constraints = air.eval_folded_circuit::<SC::Challenge>(
+        &mut circuit,
+        &sels,
+        &alpha,
+        &vec![],
+        &vec![],
+        opened_trace_local_wires,
+        opened_trace_next_wires,
+        &public_values,
+    );
 
     // Compute folded_constraints * sels.inv_vanishing.
     let folded_mul = circuit.new_challenge_wires();
