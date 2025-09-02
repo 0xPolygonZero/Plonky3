@@ -17,19 +17,13 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::fmt::Debug;
 use core::marker::PhantomData;
-use p3_field::extension::BinomiallyExtendable;
-use p3_recursion::circuit_builder::gates::arith_gates::{MulExtensionGate, SubExtensionGate};
-use p3_recursion::circuit_builder::{ChallengeWireId, CircuitBuilder};
-use p3_recursion::verifier::circuit_verifier::ProofWires;
-use p3_recursion::verifier::recursive_traits::{
-    CommitRecursiveVerif, PcsRecursiveVerif, RecursiveLagrangeSels,
-};
 
 use itertools::{Itertools, izip};
 use p3_challenger::{CanObserve, FieldChallenger, GrindingChallenger};
 use p3_commit::{BatchOpening, Mmcs, OpenedValues, Pcs, PolynomialSpace};
 use p3_dft::TwoAdicSubgroupDft;
 use p3_field::coset::TwoAdicMultiplicativeCoset;
+use p3_field::extension::BinomiallyExtendable;
 use p3_field::{
     ExtensionField, PackedFieldExtension, TwoAdicField, batch_multiplicative_inverse, dot_product,
 };
@@ -38,6 +32,12 @@ use p3_matrix::Matrix;
 use p3_matrix::bitrev::{BitReversedMatrixView, BitReversibleMatrix};
 use p3_matrix::dense::{RowMajorMatrix, RowMajorMatrixView};
 use p3_maybe_rayon::prelude::*;
+use p3_recursion::circuit_builder::gates::arith_gates::{MulExtensionGate, SubExtensionGate};
+use p3_recursion::circuit_builder::{ChallengeWireId, CircuitBuilder};
+use p3_recursion::verifier::circuit_verifier::ProofWires;
+use p3_recursion::verifier::recursive_traits::{
+    CommitRecursiveVerif, PcsRecursiveVerif, RecursiveLagrangeSels,
+};
 use p3_util::linear_map::LinearMap;
 use p3_util::{log2_strict_usize, reverse_bits_len, reverse_slice_index_bits};
 use tracing::{info_span, instrument};

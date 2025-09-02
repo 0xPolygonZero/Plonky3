@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use itertools::{Itertools, zip_eq};
 use p3_field::extension::BinomiallyExtendable;
 use p3_field::{BasedVectorSpace, Field, PrimeCharacteristicRing};
@@ -11,11 +13,12 @@ use crate::verifier::recursive_traits::{
 };
 
 #[derive(Clone)]
-pub struct FriProofWires<Comm: CommitRecursiveVerif, InputProof> {
+pub struct FriProofWires<F: Field, const D: usize, Comm: CommitRecursiveVerif<F, D>, InputProof> {
     pub commit_phase_commits: Vec<Comm>,
     pub query_proofs: Vec<QueryProofWires<InputProof>>,
     pub final_poly: Vec<usize>,
     pub pow_witness: usize,
+    _phantom: PhantomData<F>,
 }
 
 #[derive(Clone)]
@@ -31,10 +34,11 @@ pub struct CommitPhaseProofStepWires {
 }
 
 #[derive(Clone)]
-pub struct CommitmentWires<Comm: CommitRecursiveVerif> {
+pub struct CommitmentWires<F: Field, const D: usize, Comm: CommitRecursiveVerif<F, D>> {
     pub trace_wires: Comm,
     pub quotient_chunks_wires: Comm,
     pub random_commit: Option<Comm>,
+    _phantom: PhantomData<F>,
 }
 
 // TODO: Move these structures to their respective crates.
@@ -241,7 +245,7 @@ fn get_circuit_challenges<
     const D: usize,
     InputProof,
 >(
-    proof_wires: &ProofWires<D, SC::Comm, InputProof>,
+    proof_wires: &ProofWires<SC::Val, D, SC::Comm, InputProof>,
     circuit: &mut CircuitBuilder<SC::Val, D>,
 ) -> Vec<ChallengeWireId<D>> {
     let mut challenges = vec![];
@@ -282,11 +286,12 @@ fn get_circuit_challenges<
 }
 
 #[derive(Clone)]
-pub struct ProofWires<const D: usize, Comm: CommitRecursiveVerif, InputProof> {
-    pub commitments_wires: CommitmentWires<Comm>,
+pub struct ProofWires<F: Field, const D: usize, Comm: CommitRecursiveVerif<F, D>, InputProof> {
+    pub commitments_wires: CommitmentWires<F, D, Comm>,
     pub opened_values_wires: OpenedValuesWires<D>,
-    pub fri_proof: FriProofWires<Comm, InputProof>,
-    degree_bits: usize,
+    pub fri_proof: FriProofWires<F, D, Comm, InputProof>,
+    pub degree_bits: usize,
+    _phantom: PhantomData<F>,
 }
 
 pub fn verify_circuit<
@@ -298,7 +303,7 @@ pub fn verify_circuit<
 >(
     config: &SC,
     air: &A,
-    proof_wires: &ProofWires<D, SC::Comm, InputProof>,
+    proof_wires: &ProofWires<SC::Val, D, SC::Comm, InputProof>,
     public_values: &Vec<WireId>,
 ) -> Result<CircuitBuilder<impl BinomiallyExtendable<D>, D>, CircuitError>
 where
@@ -314,6 +319,7 @@ where
                 trace_wires,
                 quotient_chunks_wires,
                 random_commit,
+                ..
             },
         opened_values_wires:
             OpenedValuesWires {
@@ -328,8 +334,10 @@ where
                 query_proofs: _,
                 final_poly: _,
                 pow_witness: _,
+                ..
             },
         degree_bits,
+        ..
     } = proof_wires;
     let degree = 1 << degree_bits;
     let log_quotient_degree =
@@ -496,7 +504,7 @@ where
 
 fn vanishing_poly_at_point_circuit<
     InputProof,
-    Comm: CommitRecursiveVerif,
+    Comm: CommitRecursiveVerif<SC::Val, D>,
     SC: RecursiveStarkGenerationConfig<InputProof, D>,
     Domain,
     const D: usize,

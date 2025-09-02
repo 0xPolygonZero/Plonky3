@@ -6,8 +6,9 @@ use itertools::Itertools;
 use p3_air::{Air, AirBuilder, AirBuilderWithPublicValues, BaseAir};
 use p3_baby_bear::{BabyBear, Poseidon2BabyBear};
 use p3_challenger::{DuplexChallenger, HashChallenger, SerializingChallenger32};
-use p3_commit::ExtensionMmcs;
+use p3_commit::{BatchOpening, ExtensionMmcs, Mmcs};
 use p3_dft::Radix2DitParallel;
+use p3_field::coset::TwoAdicMultiplicativeCoset;
 use p3_field::extension::{BinomialExtensionField, BinomiallyExtendable};
 use p3_field::{BasedVectorSpace, Field, PrimeCharacteristicRing, PrimeField64};
 use p3_fri::{HidingFriPcs, TwoAdicFriPcs, create_test_fri_params};
@@ -16,8 +17,10 @@ use p3_matrix::Matrix;
 use p3_matrix::dense::RowMajorMatrix;
 use p3_merkle_tree::{MerkleTreeHidingMmcs, MerkleTreeMmcs};
 use p3_recursion::circuit_builder::CircuitBuilder;
-use p3_recursion::verifier::circuit_verifier::verify_circuit;
-use p3_recursion::verifier::recursive_traits::{RecursiveAir, RecursiveStarkGenerationConfig};
+use p3_recursion::verifier::circuit_verifier::{verify_circuit, ProofWires};
+use p3_recursion::verifier::recursive_traits::{
+    CommitRecursiveVerif, RecursiveAir, RecursiveStarkGenerationConfig,
+};
 use p3_symmetric::{
     CompressionFunctionFromHasher, PaddingFreeSponge, SerializingHasher, TruncatedPermutation,
 };
@@ -188,6 +191,46 @@ type Challenger = DuplexChallenger<Val, Perm, 16, 8>;
 type Dft = Radix2DitParallel<Val>;
 type Pcs = TwoAdicFriPcs<Val, Dft, ValMmcs, ChallengeMmcs>;
 type MyConfig = StarkConfig<Pcs, Challenge, Challenger>;
+
+pub struct RecursiveStarkConfig<const D: usize> {
+    pcs: Pcs,
+    challenger: Challenger,
+    _phantom: PhantomData<Challenge>,
+}
+
+impl<const D: usize> RecursiveStarkConfig<D> {
+    pub const fn new(pcs: Pcs, challenger: Challenger) -> Self {
+        Self {
+            pcs,
+            challenger,
+            _phantom: PhantomData,
+        }
+    }
+}
+
+impl RecursiveStarkGenerationConfig<Vec<BatchOpening<Val, ValMmcs>>, 4>
+    for RecursiveStarkConfig<4>
+{
+    type Val = Val;
+
+    // TODO: What do we need here?
+    type Domain = TwoAdicMultiplicativeCoset<Val>;
+    type Challenge = Challenge;
+
+    type Comm = <ValMmcs as Mmcs<Val>>::Commitment;
+
+    type Pcs = Pcs;
+
+    fn pcs(&self) -> Self::Pcs {
+        // You should return a clone or reference to self.pcs as appropriate for your use case.
+        // For now, we return a clone if Pcs implements Clone.
+        unimplemented!()
+    }
+
+    fn is_zk(&self) -> usize {
+        0
+    }
+}
 
 /// n-th Fibonacci number expected to be x
 fn test_public_value_impl(n: usize, x: u64, log_final_poly_len: usize) {
@@ -447,87 +490,27 @@ fn test_symbolic_to_circuit() {
     assert!(folded_constraints == challenge_sum);
 }
 
-pub struct RecursiveStarkConfig<const D: usize> {
-    pcs: Pcs,
-    challenger: Challenger,
-    _phantom: PhantomData<Challenge>,
-}
-
-impl<const D: usize> RecursiveStarkConfig<D> {
-    pub const fn new(pcs: Pcs, challenger: Challenger) -> Self {
-        Self {
-            pcs,
-            challenger,
-            _phantom: PhantomData,
-        }
-    }
-}
-
-impl<InputProof> RecursiveStarkGenerationConfig<InputProof, 4> for RecursiveStarkConfig<D> {
-    type Val = Val;
-
-    type Domain = Pcs::Domain;
-
-    type Challenge = Challenge;
-
-    type Comm = Comm;
-
-    type Pcs = Pcs;
-
-    fn pcs(&self) -> Self::Pcs {
-        todo!()
-    }
-
-    fn is_zk(&self) -> usize {
-        0
-    }
-}
-
 #[test]
 fn test_recursive_fib_air() {
-    type ByteHash = Keccak256Hash;
-    let byte_hash = ByteHash {};
-
-    type U64Hash = PaddingFreeSponge<KeccakF, 25, 17, 4>;
-    let u64_hash = U64Hash::new(KeccakF {});
-
-    type FieldHash = SerializingHasher<U64Hash>;
-    let field_hash = FieldHash::new(u64_hash);
-
-    type MyCompress = CompressionFunctionFromHasher<U64Hash, 2, 4>;
-    let compress = MyCompress::new(u64_hash);
-
-    type ValHidingMmcs = MerkleTreeHidingMmcs<
-        [Val; p3_keccak::VECTOR_LEN],
-        [u64; p3_keccak::VECTOR_LEN],
-        FieldHash,
-        MyCompress,
-        SmallRng,
-        4,
-        4,
-    >;
-
-    let rng = SmallRng::seed_from_u64(1);
-    let val_mmcs = ValHidingMmcs::new(field_hash, compress, rng);
-
-    type Challenger = SerializingChallenger32<Val, HashChallenger<u8, ByteHash, 32>>;
-
-    type ChallengeHidingMmcs = ExtensionMmcs<Val, Challenge, ValHidingMmcs>;
+    let mut rng = SmallRng::seed_from_u64(1);
+    let perm = Perm::new_from_rng_128(&mut rng);
+    let hash = MyHash::new(perm.clone());
+    let compress = MyCompress::new(perm.clone());
+    let val_mmcs = ValMmcs::new(hash, compress);
+    let challenge_mmcs = ChallengeMmcs::new(val_mmcs.clone());
+    let challenger = Challenger::new(perm);
+    let dft = Dft::default();
 
     let n = 1 << 3;
     let x = 21;
 
-    let challenge_mmcs = ChallengeHidingMmcs::new(val_mmcs.clone());
-    let dft = Dft::default();
     let trace = generate_trace_rows::<Val>(0, 1, n);
     let fri_params = create_test_fri_params(challenge_mmcs, 2);
-    type HidingPcs = HidingFriPcs<Val, Dft, ValHidingMmcs, ChallengeHidingMmcs, SmallRng>;
-    type MyHidingConfig = StarkConfig<HidingPcs, Challenge, Challenger>;
-    let pcs = HidingPcs::new(dft, val_mmcs, fri_params, 4, SmallRng::seed_from_u64(1));
-    let challenger = Challenger::from_hasher(vec![], byte_hash);
-    let config = MyHidingConfig::new(pcs, challenger);
+    type MyConfig = StarkConfig<Pcs, Challenge, Challenger>;
+    let pcs = Pcs::new(dft, val_mmcs, fri_params);
 
     let air = FibonacciAir {};
+    let config = MyConfig::new(pcs, challenger);
     let pis = vec![BabyBear::ZERO, BabyBear::ONE, BabyBear::from_u64(x)];
     let proof = prove(&config, &air, trace, &pis);
     let _ = verify(&config, &FibonacciAir {}, &proof, &pis).expect("verification failed");
@@ -535,5 +518,10 @@ fn test_recursive_fib_air() {
     let (alpha, sels, folded_constraints) =
         verify_with_return_values(&config, &air, &proof, &pis).expect("verification failed");
 
-    let verifier_circuit = verify_circuit(&config);
+    let recursive_config = RecursiveStarkConfig::new(pcs, challenger);
+
+
+    let proof_wires = ProofWires { commitments_wires: todo!(), opened_values_wires: todo!(), fri_proof: todo!(), degree_bits: todo!(), .. }
+
+    let verifier_circuit = verify_circuit(&config, &air);
 }

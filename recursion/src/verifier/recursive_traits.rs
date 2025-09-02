@@ -1,18 +1,29 @@
 use p3_field::extension::BinomiallyExtendable;
 use p3_field::{ExtensionField, Field};
+use p3_symmetric::Hash;
 
 use crate::circuit_builder::{ChallengeWireId, CircuitBuilder, WireId};
 use crate::verifier::circuit_verifier::ProofWires;
 
-pub trait CommitRecursiveVerif {
-    fn get_commit_challenges_circuit() -> Vec<WireId>;
+pub trait CommitRecursiveVerif<F: Field, const D: usize> {
+    fn get_commit_challenges_circuit(circuit_builder: &mut CircuitBuilder<F, D>) -> Vec<WireId>;
+}
+
+impl<F: Field, W, const DIGEST_ELEMS: usize, const D: usize> CommitRecursiveVerif<F, D>
+    for Hash<F, W, DIGEST_ELEMS>
+{
+    fn get_commit_challenges_circuit(circuit_builder: &mut CircuitBuilder<F, D>) -> Vec<WireId> {
+        (0..DIGEST_ELEMS)
+            .map(|_| circuit_builder.new_wire())
+            .collect()
+    }
 }
 
 pub trait RecursiveStarkGenerationConfig<InputProof, const D: usize> {
     type Val: Field + BinomiallyExtendable<D>;
     type Domain: Copy;
     type Challenge: ExtensionField<Self::Val>;
-    type Comm: CommitRecursiveVerif;
+    type Comm: CommitRecursiveVerif<Self::Val, D>;
     type Pcs: PcsRecursiveVerif<InputProof, Self::Comm, Self::Domain, Self::Val, Self::Challenge, D>;
 
     fn pcs(&self) -> Self::Pcs;
@@ -22,7 +33,7 @@ pub trait RecursiveStarkGenerationConfig<InputProof, const D: usize> {
 
 pub trait PcsRecursiveVerif<
     InputProof,
-    Comm: CommitRecursiveVerif,
+    Comm: CommitRecursiveVerif<F, D>,
     Domain,
     F: Field,
     EF,
@@ -32,7 +43,7 @@ pub trait PcsRecursiveVerif<
 {
     fn get_challenges_circuit(
         circuit: &mut CircuitBuilder<F, D>,
-        proof_wires: &ProofWires<D, Comm, InputProof>,
+        proof_wires: &ProofWires<F, D, Comm, InputProof>,
     ) -> Vec<ChallengeWireId<D>>;
 
     fn verify_circuit(
