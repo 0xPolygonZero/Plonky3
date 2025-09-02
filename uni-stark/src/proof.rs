@@ -34,6 +34,6 @@ pub struct Commitments<Com> {
 pub struct OpenedValues<Challenge> {
     pub trace_local: Vec<Challenge>,
     pub trace_next: Vec<Challenge>,
-    pub(crate) quotient_chunks: Vec<Vec<Challenge>>,
-    pub(crate) random: Option<Vec<Challenge>>,
+    pub quotient_chunks: Vec<Vec<Challenge>>,
+    pub random: Option<Vec<Challenge>>,
 }

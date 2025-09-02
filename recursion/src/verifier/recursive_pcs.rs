@@ -9,7 +9,7 @@ use p3_util::log2_strict_usize;
 
 use crate::{
     circuit_builder::{
-        ChallengeWireId, CircuitBuilder, WireId,
+        CircuitBuilder, ExtensionWireId, WireId,
         gates::arith_gates::{MulExtensionGate, SubExtensionGate},
     },
     verifier::{
@@ -36,15 +36,15 @@ where
 {
     fn get_challenges_circuit(
         circuit: &mut CircuitBuilder<F, D>,
-        proof_wires: &ProofWires<F, D, InputMmcs::Commitment, Vec<BatchOpening<F, InputMmcs>>>,
-    ) -> Vec<ChallengeWireId<D>> {
+        proof_wires: &ProofWires<D, InputMmcs::Commitment, Vec<BatchOpening<F, InputMmcs>>>,
+    ) -> Vec<ExtensionWireId<D>> {
         let num_challenges = 1
             + proof_wires.fri_proof.commit_phase_commits.len()
             + proof_wires.fri_proof.query_proofs.len();
 
         let mut challenges = Vec::with_capacity(num_challenges);
         for _ in 0..num_challenges {
-            challenges.push(circuit.new_challenge_wires());
+            challenges.push(circuit.new_extension_wires());
         }
 
         challenges
@@ -53,7 +53,7 @@ where
     fn verify_circuit(
         &self,
         _circuit: &mut CircuitBuilder<F, D>,
-        _challenges: &[ChallengeWireId<D>],
+        _challenges: &[ExtensionWireId<D>],
         _commitments_with_opening_points: &[(
             &InputMmcs::Commitment,
             Vec<(
@@ -70,14 +70,14 @@ where
         &self,
         circuit: &mut CircuitBuilder<F, D>,
         domain: &TwoAdicMultiplicativeCoset<F>,
-        point: &ChallengeWireId<D>,
+        point: &ExtensionWireId<D>,
     ) -> RecursiveLagrangeSels<D> {
         // Constants that we will need.
-        let shift_inv = circuit.add_challenge_constant(EF::from(domain.shift_inverse()));
-        let one = circuit.add_challenge_constant(EF::from(F::ONE));
+        let shift_inv = circuit.add_extension_constant(EF::from(domain.shift_inverse()));
+        let one = circuit.add_extension_constant(EF::from(F::ONE));
         let subgroup_gen_inv =
-            circuit.add_challenge_constant(EF::from(domain.subgroup_generator().inverse()));
-        let exp = circuit.add_challenge_constant(EF::from_usize(<TwoAdicFriPcs<
+            circuit.add_extension_constant(EF::from(domain.subgroup_generator().inverse()));
+        let exp = circuit.add_extension_constant(EF::from_usize(<TwoAdicFriPcs<
             F,
             Dft,
             InputMmcs,
@@ -92,17 +92,17 @@ where
         >>::size(self, domain)));
 
         // Unshifted and z_h
-        let unshifted_point: [usize; D] = circuit.new_challenge_wires();
+        let unshifted_point: [usize; D] = circuit.new_extension_wires();
         MulExtensionGate::add_to_circuit(circuit, shift_inv, *point, unshifted_point);
-        let us_exp = circuit.new_challenge_wires();
+        let us_exp = circuit.new_extension_wires();
         MulExtensionGate::add_to_circuit(circuit, unshifted_point, exp, us_exp);
-        let z_h = circuit.new_challenge_wires();
+        let z_h = circuit.new_extension_wires();
         SubExtensionGate::add_to_circuit(circuit, us_exp, one, z_h);
 
         // Denominators
-        let us_minus_one = circuit.new_challenge_wires();
+        let us_minus_one = circuit.new_extension_wires();
         SubExtensionGate::add_to_circuit(circuit, unshifted_point, one, us_minus_one);
-        let us_minus_gen_inv = circuit.new_challenge_wires();
+        let us_minus_gen_inv = circuit.new_extension_wires();
         SubExtensionGate::add_to_circuit(
             circuit,
             unshifted_point,
@@ -111,12 +111,12 @@ where
         );
 
         // Selectors
-        let is_first_row = circuit.new_challenge_wires();
+        let is_first_row = circuit.new_extension_wires();
         MulExtensionGate::add_to_circuit(circuit, us_minus_one, is_first_row, z_h);
-        let is_last_row = circuit.new_challenge_wires();
+        let is_last_row = circuit.new_extension_wires();
         MulExtensionGate::add_to_circuit(circuit, us_minus_gen_inv, is_last_row, z_h);
         let is_transition = us_minus_gen_inv;
-        let inv_vanishing = circuit.new_challenge_wires();
+        let inv_vanishing = circuit.new_extension_wires();
         MulExtensionGate::add_to_circuit(circuit, z_h, inv_vanishing, one);
 
         RecursiveLagrangeSels {
@@ -189,15 +189,15 @@ where
 {
     fn get_challenges_circuit(
         circuit: &mut CircuitBuilder<F, D>,
-        proof_wires: &ProofWires<F, D, RecursiveTrivialCommitment, ()>,
-    ) -> Vec<ChallengeWireId<D>> {
+        proof_wires: &ProofWires<D, RecursiveTrivialCommitment, ()>,
+    ) -> Vec<ExtensionWireId<D>> {
         let num_challenges = 1
             + proof_wires.fri_proof.commit_phase_commits.len()
             + proof_wires.fri_proof.query_proofs.len();
 
         let mut challenges = Vec::with_capacity(num_challenges);
         for _ in 0..num_challenges {
-            challenges.push(circuit.new_challenge_wires());
+            challenges.push(circuit.new_extension_wires());
         }
 
         challenges
@@ -206,12 +206,12 @@ where
     fn verify_circuit(
         &self,
         _circuit: &mut CircuitBuilder<F, D>,
-        _challenges: &[ChallengeWireId<D>],
+        _challenges: &[ExtensionWireId<D>],
         _commitments_with_opening_points: &[(
             &RecursiveTrivialCommitment,
             Vec<(
                 TwoAdicMultiplicativeCoset<F>,
-                Vec<(ChallengeWireId<D>, Vec<ChallengeWireId<D>>)>,
+                Vec<(ExtensionWireId<D>, Vec<ExtensionWireId<D>>)>,
             )>,
         )],
     ) {
@@ -223,14 +223,14 @@ where
         &self,
         circuit: &mut CircuitBuilder<F, D>,
         domain: &TwoAdicMultiplicativeCoset<F>,
-        point: &ChallengeWireId<D>,
+        point: &ExtensionWireId<D>,
     ) -> RecursiveLagrangeSels<D> {
         // Constants that we will need.
-        let shift_inv = circuit.add_challenge_constant(EF::from(domain.shift_inverse()));
-        let one = circuit.add_challenge_constant(EF::from(F::ONE));
+        let shift_inv = circuit.add_extension_constant(EF::from(domain.shift_inverse()));
+        let one = circuit.add_extension_constant(EF::from(F::ONE));
         let subgroup_gen_inv =
-            circuit.add_challenge_constant(EF::from(domain.subgroup_generator().inverse()));
-        let exp = circuit.add_challenge_constant(EF::from_usize(
+            circuit.add_extension_constant(EF::from(domain.subgroup_generator().inverse()));
+        let exp = circuit.add_extension_constant(EF::from_usize(
             <TrivialPcs<F, Dft> as PcsRecursiveVerif<
                 (),
                 RecursiveTrivialCommitment,
@@ -242,17 +242,17 @@ where
         ));
 
         // Unshifted and z_h
-        let unshifted_point: [usize; D] = circuit.new_challenge_wires();
+        let unshifted_point: [usize; D] = circuit.new_extension_wires();
         MulExtensionGate::add_to_circuit(circuit, shift_inv, *point, unshifted_point);
-        let us_exp = circuit.new_challenge_wires();
+        let us_exp = circuit.new_extension_wires();
         MulExtensionGate::add_to_circuit(circuit, unshifted_point, exp, us_exp);
-        let z_h = circuit.new_challenge_wires();
+        let z_h = circuit.new_extension_wires();
         SubExtensionGate::add_to_circuit(circuit, us_exp, one, z_h);
 
         // Denominators
-        let us_minus_one = circuit.new_challenge_wires();
+        let us_minus_one = circuit.new_extension_wires();
         SubExtensionGate::add_to_circuit(circuit, unshifted_point, one, us_minus_one);
-        let us_minus_gen_inv = circuit.new_challenge_wires();
+        let us_minus_gen_inv = circuit.new_extension_wires();
         SubExtensionGate::add_to_circuit(
             circuit,
             unshifted_point,
@@ -261,12 +261,12 @@ where
         );
 
         // Selectors
-        let is_first_row = circuit.new_challenge_wires();
+        let is_first_row = circuit.new_extension_wires();
         MulExtensionGate::add_to_circuit(circuit, us_minus_one, is_first_row, z_h);
-        let is_last_row = circuit.new_challenge_wires();
+        let is_last_row = circuit.new_extension_wires();
         MulExtensionGate::add_to_circuit(circuit, us_minus_gen_inv, is_last_row, z_h);
         let is_transition = us_minus_gen_inv;
-        let inv_vanishing = circuit.new_challenge_wires();
+        let inv_vanishing = circuit.new_extension_wires();
         MulExtensionGate::add_to_circuit(circuit, z_h, inv_vanishing, one);
 
         RecursiveLagrangeSels {

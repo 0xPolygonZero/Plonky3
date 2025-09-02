@@ -1,15 +1,23 @@
 use std::array;
 
+use itertools::Itertools;
+use p3_commit::{Mmcs, Pcs};
 use p3_field::extension::BinomiallyExtendable;
-use p3_field::{ExtensionField, Field};
-use p3_uni_stark::{Entry, Proof, StarkGenericConfig, SymbolicExpression};
+use p3_field::{BasedVectorSpace, ExtensionField, Field};
+use p3_fri::FriProof;
+use p3_uni_stark::{
+    Commitments, Entry, OpenedValues, Proof, StarkGenericConfig, SymbolicExpression, Val,
+};
 
 use crate::circuit_builder::gates::arith_gates::{
     AddExtensionGate, MulExtensionGate, SubExtensionGate,
 };
 use crate::circuit_builder::gates::event::AllEvents;
 use crate::circuit_builder::gates::gate::Gate;
-use crate::verifier::circuit_verifier::ProofWires;
+use crate::verifier::circuit_verifier::{
+    CommitmentWires, FriProofWires, OpenedValuesWires, ProofWires,
+};
+use crate::verifier::recursive_traits::{CommitForRecursiveVerif, CommitRecursiveVerif};
 
 pub type WireId = usize;
 
@@ -19,7 +27,7 @@ pub struct CircuitBuilder<F: Field, const D: usize> {
     gate_instances: Vec<Box<dyn Gate<F, D>>>,
 }
 
-pub type ChallengeWireId<const D: usize> = [WireId; D];
+pub type ExtensionWireId<const D: usize> = [WireId; D];
 
 impl<F: Field, const D: usize> CircuitBuilder<F, D> {
     pub fn new() -> Self {
@@ -35,7 +43,7 @@ impl<F: Field, const D: usize> CircuitBuilder<F, D> {
         self.wires.len() - 1
     }
 
-    pub fn new_challenge_wires(&mut self) -> ChallengeWireId<D> {
+    pub fn new_extension_wires(&mut self) -> ExtensionWireId<D> {
         array::from_fn(|_| self.new_wire())
     }
 
@@ -49,10 +57,10 @@ impl<F: Field, const D: usize> CircuitBuilder<F, D> {
         wire_id
     }
 
-    pub fn add_challenge_constant<EF: ExtensionField<F>>(
+    pub fn add_extension_constant<EF: ExtensionField<F>>(
         &mut self,
         value: EF,
-    ) -> ChallengeWireId<D> {
+    ) -> ExtensionWireId<D> {
         assert_eq!(
             EF::DIMENSION,
             D,
@@ -96,31 +104,23 @@ impl<F: Field, const D: usize> CircuitBuilder<F, D> {
         Ok(())
     }
 
-    pub fn set_challenge_wires(
+    pub fn set_extension_wires(
         &mut self,
-        ids: ChallengeWireId<D>,
+        ids: ExtensionWireId<D>,
         value: &[F; D],
     ) -> Result<(), CircuitError> {
         self.set_wire_values(&ids, value)
     }
 
-    pub fn set_proof_wires<SC: StarkGenericConfig>(
+    pub fn set_extension_wires_slice(
         &mut self,
-        proof_wires: &ProofWires<F, D>,
-        proof: Proof<SC>,
-    ) {
-        let ProofWires {
-            local_values,
-            next_values,
-            local_prep_values,
-            next_prep_values,
-            public_values,
-            challenges,
-            is_first_row,
-            is_last_row,
-            is_transition,
-            ..
-        } = proof_wires;
+        ids: &[ExtensionWireId<D>],
+        value: &[[F; D]],
+    ) -> Result<(), CircuitError> {
+        for (id, val) in ids.iter().zip(value.iter()) {
+            self.set_extension_wires(*id, val)?;
+        }
+        Ok(())
     }
 
     pub fn set_public_inputs(&mut self, ids: &[WireId], values: &[F]) -> Result<(), CircuitError> {
@@ -148,6 +148,132 @@ impl<F: Field, const D: usize> CircuitBuilder<F, D> {
     }
 }
 
+/// Function which, given `CommitmentWires` and `Commitments`, sets the wires to the associated values.
+pub fn set_commitment_wires<SC: StarkGenericConfig, Comm: CommitRecursiveVerif, const D: usize>(
+    circuit: &mut CircuitBuilder<Val<SC>, D>,
+    comm_wires: &CommitmentWires<Comm>,
+    comm: &Commitments<<SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Commitment>,
+) -> Result<(), CircuitError>
+where
+    <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Commitment: CommitForRecursiveVerif<Val<SC>>,
+{
+    let CommitmentWires {
+        trace_wires: trace_wires_comm,
+        quotient_chunks_wires: quotient_chunks_wires_comm,
+        random_commit,
+    } = comm_wires;
+
+    circuit.set_wire_values(&trace_wires_comm.get_wires(), &comm.trace.get_values())?;
+    circuit.set_wire_values(
+        &quotient_chunks_wires_comm.get_wires(),
+        &comm.quotient_chunks.get_values(),
+    )?;
+    if let Some(r_commit) = random_commit {
+        circuit.set_wire_values(
+            &r_commit.get_wires(),
+            &comm
+                .random
+                .as_ref()
+                .ok_or(CircuitError::RandomizationError)?
+                .get_values(),
+        )?;
+    }
+    Ok(())
+}
+
+/// Function which, given `OpenedValuesWires` and `OpenedValues`, sets the wires to the aassociated values.
+pub fn set_opened_wires<SC: StarkGenericConfig, Comm: CommitRecursiveVerif, const D: usize>(
+    circuit: &mut CircuitBuilder<Val<SC>, D>,
+    opened_wires: &OpenedValuesWires<D>,
+    opened_values: OpenedValues<SC::Challenge>,
+) -> Result<(), CircuitError>
+where
+    <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Commitment: CommitForRecursiveVerif<Val<SC>>,
+{
+    let OpenedValuesWires {
+        trace_local_wires,
+        trace_next_wires,
+        quotient_chunks_wires,
+        random,
+    } = opened_wires;
+
+    let trace_local_ext = opened_values
+        .trace_local
+        .iter()
+        .map(|l| l.as_basis_coefficients_slice().try_into().unwrap())
+        .collect::<Vec<_>>();
+    circuit.set_extension_wires_slice(trace_local_wires, &trace_local_ext)?;
+    let trace_next_ext = opened_values
+        .trace_next
+        .iter()
+        .map(|l| l.as_basis_coefficients_slice().try_into().unwrap())
+        .collect::<Vec<_>>();
+    circuit.set_extension_wires_slice(trace_next_wires, &trace_next_ext)?;
+    for (chunk_wires, chunk) in quotient_chunks_wires
+        .iter()
+        .zip_eq(opened_values.quotient_chunks.iter())
+    {
+        let chunk_ext = chunk
+            .iter()
+            .map(|l| l.as_basis_coefficients_slice().try_into().unwrap())
+            .collect::<Vec<_>>();
+        circuit.set_extension_wires_slice(chunk_wires, &chunk_ext)?;
+    }
+
+    if let Some(r) = opened_values.random {
+        let r_ext = r
+            .iter()
+            .map(|l| l.as_basis_coefficients_slice().try_into().unwrap())
+            .collect::<Vec<_>>();
+        let random_wires = random.as_ref().ok_or(CircuitError::RandomizationError)?;
+        circuit.set_extension_wires_slice(random_wires, &r_ext)?;
+    }
+    Ok(())
+}
+
+/// Given a proof and proof wires, this function sets the proof wires with the corresponding values.
+pub fn set_proof_wires<
+    SC: StarkGenericConfig,
+    Comm: CommitRecursiveVerif,
+    InputProof,
+    const D: usize,
+>(
+    circuit: &mut CircuitBuilder<Val<SC>, D>,
+    proof_wires: &ProofWires<D, Comm, InputProof>,
+    proof: Proof<SC>,
+) -> Result<(), CircuitError>
+where
+    <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Commitment: CommitForRecursiveVerif<Val<SC>>,
+{
+    let ProofWires {
+        commitments_wires,
+        opened_values_wires,
+        fri_proof:
+            FriProofWires {
+                commit_phase_commits: _,
+                query_proofs: _,
+                final_poly: _,
+                pow_witness: _,
+            },
+        ..
+    } = proof_wires;
+
+    let Proof {
+        commitments,
+        opened_values,
+        opening_proof,
+        degree_bits: _,
+    } = proof;
+
+    // Set commitment wires.
+    set_commitment_wires::<SC, Comm, D>(circuit, commitments_wires, &commitments)?;
+
+    // Set opened values.
+    set_opened_wires::<SC, Comm, D>(circuit, opened_values_wires, opened_values)?;
+
+    Ok(())
+}
+
 #[derive(Debug)]
 pub enum CircuitError {
     RandomizationError,
@@ -158,25 +284,25 @@ pub enum CircuitError {
 }
 
 pub fn symbolic_to_circuit<F: Field, EF, const D: usize>(
-    is_first_row: ChallengeWireId<D>,
-    is_last_row: ChallengeWireId<D>,
-    is_transition: ChallengeWireId<D>,
-    challenges: &[ChallengeWireId<D>],
+    is_first_row: ExtensionWireId<D>,
+    is_last_row: ExtensionWireId<D>,
+    is_transition: ExtensionWireId<D>,
+    challenges: &[ExtensionWireId<D>],
     public_values: &[WireId],
-    local_prep_values: &[ChallengeWireId<D>],
-    next_prep_values: &[ChallengeWireId<D>],
-    local_values: &[ChallengeWireId<D>],
-    next_values: &[ChallengeWireId<D>],
+    local_prep_values: &[ExtensionWireId<D>],
+    next_prep_values: &[ExtensionWireId<D>],
+    local_values: &[ExtensionWireId<D>],
+    next_values: &[ExtensionWireId<D>],
     symbolic: &SymbolicExpression<EF>,
     circuit: &mut CircuitBuilder<F, D>,
-) -> ChallengeWireId<D>
+) -> ExtensionWireId<D>
 where
     F: BinomiallyExtendable<D>,
     EF: ExtensionField<F>,
 {
     assert_eq!(D, EF::DIMENSION);
     match symbolic {
-        SymbolicExpression::Constant(c) => circuit.add_challenge_constant(c.clone()),
+        SymbolicExpression::Constant(c) => circuit.add_extension_constant(c.clone()),
         SymbolicExpression::Variable(v) => match v.entry {
             Entry::Preprocessed { offset } => {
                 if offset == 0 {
@@ -197,7 +323,7 @@ where
                 }
             }
             Entry::Public => {
-                let mut res = circuit.add_challenge_constant(EF::ZERO);
+                let mut res = circuit.add_extension_constant(EF::ZERO);
                 res[0] = public_values[v.index].clone();
 
                 res
@@ -233,7 +359,7 @@ where
                 circuit,
             );
 
-            let out_wire = circuit.new_challenge_wires();
+            let out_wire = circuit.new_extension_wires();
 
             AddExtensionGate::add_to_circuit(circuit, x_wire, y_wire, out_wire);
 
@@ -267,7 +393,7 @@ where
                 circuit,
             );
 
-            let out_wire = circuit.new_challenge_wires();
+            let out_wire = circuit.new_extension_wires();
 
             MulExtensionGate::add_to_circuit(circuit, x_wire, y_wire, out_wire);
             out_wire
@@ -300,7 +426,7 @@ where
                 circuit,
             );
 
-            let out_wire = circuit.new_challenge_wires();
+            let out_wire = circuit.new_extension_wires();
 
             SubExtensionGate::add_to_circuit(circuit, x_wire, y_wire, out_wire);
 
@@ -320,9 +446,9 @@ where
                 x,
                 circuit,
             );
-            let zero = circuit.add_challenge_constant(EF::ZERO);
+            let zero = circuit.add_extension_constant(EF::ZERO);
 
-            let out_wire = circuit.new_challenge_wires();
+            let out_wire = circuit.new_extension_wires();
 
             SubExtensionGate::add_to_circuit(circuit, zero, x_wire, out_wire);
 

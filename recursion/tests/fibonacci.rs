@@ -15,7 +15,7 @@ use p3_keccak::{Keccak256Hash, KeccakF};
 use p3_matrix::{Matrix, dense::RowMajorMatrix};
 use p3_merkle_tree::MerkleTreeHidingMmcs;
 use p3_recursion::circuit_builder::gates::arith_gates::{AddExtensionGate, MulExtensionGate};
-use p3_recursion::circuit_builder::{ChallengeWireId, CircuitBuilder, WireId, symbolic_to_circuit};
+use p3_recursion::circuit_builder::{CircuitBuilder, ExtensionWireId, WireId, symbolic_to_circuit};
 use p3_recursion::verifier::recursive_traits::RecursiveAir;
 use p3_symmetric::{CompressionFunctionFromHasher, PaddingFreeSponge, SerializingHasher};
 use p3_uni_stark::{
@@ -96,21 +96,21 @@ impl<F: Field + BinomiallyExtendable<D>, const D: usize> RecursiveAir<F, D> for 
         &self,
         builder: &mut CircuitBuilder<F, D>,
         sels: &p3_recursion::verifier::recursive_traits::RecursiveLagrangeSels<D>,
-        alpha: &p3_recursion::circuit_builder::ChallengeWireId<D>,
-        local_prep_values: &[ChallengeWireId<D>],
-        next_prep_values: &[ChallengeWireId<D>],
-        local_values: &[ChallengeWireId<D>],
-        next_values: &[ChallengeWireId<D>],
+        alpha: &p3_recursion::circuit_builder::ExtensionWireId<D>,
+        local_prep_values: &[ExtensionWireId<D>],
+        next_prep_values: &[ExtensionWireId<D>],
+        local_values: &[ExtensionWireId<D>],
+        next_values: &[ExtensionWireId<D>],
         public_values: &[WireId],
-    ) -> p3_recursion::circuit_builder::ChallengeWireId<D> {
+    ) -> p3_recursion::circuit_builder::ExtensionWireId<D> {
         let symbolic_constraints: Vec<SymbolicExpression<EF>> =
             get_symbolic_constraints(&FibonacciAir {}, 0, public_values.len());
 
-        let mut acc = builder.add_challenge_constant(EF::ZERO);
+        let mut acc = builder.add_extension_constant(EF::ZERO);
         for s_c in symbolic_constraints {
-            let mul_prev = builder.new_challenge_wires();
+            let mul_prev = builder.new_extension_wires();
             MulExtensionGate::add_to_circuit(builder, acc, *alpha, mul_prev);
-            let new_acc = builder.new_challenge_wires();
+            let new_acc = builder.new_extension_wires();
             let constraints = symbolic_to_circuit(
                 sels.is_first_row,
                 sels.is_last_row,
@@ -242,16 +242,16 @@ fn test_symbolic_to_circuit() {
 
     let mut circuit = CircuitBuilder::<Val, D>::new();
     let circuit_sels = [
-        circuit.new_challenge_wires(),
-        circuit.new_challenge_wires(),
-        circuit.new_challenge_wires(),
+        circuit.new_extension_wires(),
+        circuit.new_extension_wires(),
+        circuit.new_extension_wires(),
     ];
     let circuit_public_values = [circuit.new_wire(), circuit.new_wire(), circuit.new_wire()];
     let mut circuit_local_values = Vec::with_capacity(NUM_FIBONACCI_COLS);
     let mut circuit_next_values = Vec::with_capacity(NUM_FIBONACCI_COLS);
     for _ in 0..NUM_FIBONACCI_COLS {
-        circuit_local_values.push(circuit.new_challenge_wires());
-        circuit_next_values.push(circuit.new_challenge_wires());
+        circuit_local_values.push(circuit.new_extension_wires());
+        circuit_next_values.push(circuit.new_extension_wires());
     }
 
     // let pis_extension = pis.iter().map(|&x| Challenge::from(x)).collect::<Vec<_>>();
@@ -274,7 +274,7 @@ fn test_symbolic_to_circuit() {
 
     // Set selectors.
     circuit
-        .set_challenge_wires(
+        .set_extension_wires(
             circuit_sels[0],
             sels.is_first_row
                 .as_basis_coefficients_slice()
@@ -283,7 +283,7 @@ fn test_symbolic_to_circuit() {
         )
         .unwrap();
     circuit
-        .set_challenge_wires(
+        .set_extension_wires(
             circuit_sels[1],
             sels.is_last_row
                 .as_basis_coefficients_slice()
@@ -292,7 +292,7 @@ fn test_symbolic_to_circuit() {
         )
         .unwrap();
     circuit
-        .set_challenge_wires(
+        .set_extension_wires(
             circuit_sels[2],
             sels.is_transition
                 .as_basis_coefficients_slice()
@@ -311,12 +311,12 @@ fn test_symbolic_to_circuit() {
     // Set local and next values.
     for (lv, c_lv) in local_values.iter().zip_eq(circuit_local_values) {
         circuit
-            .set_challenge_wires(c_lv, lv.as_basis_coefficients_slice().try_into().unwrap())
+            .set_extension_wires(c_lv, lv.as_basis_coefficients_slice().try_into().unwrap())
             .unwrap();
     }
     for (nv, c_nv) in next_values.iter().zip_eq(circuit_next_values) {
         circuit
-            .set_challenge_wires(c_nv, nv.as_basis_coefficients_slice().try_into().unwrap())
+            .set_extension_wires(c_nv, nv.as_basis_coefficients_slice().try_into().unwrap())
             .unwrap();
     }
 

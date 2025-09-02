@@ -1,7 +1,7 @@
 use p3_field::{ExtensionField, Field, extension::BinomiallyExtendable};
 
 use crate::{
-    circuit_builder::{ChallengeWireId, CircuitBuilder, WireId},
+    circuit_builder::{ExtensionWireId, CircuitBuilder, WireId},
     verifier::circuit_verifier::ProofWires,
 };
 
@@ -41,13 +41,13 @@ pub trait PcsRecursiveVerif<
 {
     fn get_challenges_circuit(
         circuit: &mut CircuitBuilder<F, D>,
-        proof_wires: &ProofWires<F, D, Comm, InputProof>,
-    ) -> Vec<ChallengeWireId<D>>;
+        proof_wires: &ProofWires<D, Comm, InputProof>,
+    ) -> Vec<ExtensionWireId<D>>;
 
     fn verify_circuit(
         &self,
         circuit: &mut CircuitBuilder<F, D>,
-        challenges: &[ChallengeWireId<D>],
+        challenges: &[ExtensionWireId<D>],
         commitments_with_opening_points: &[(
             &Comm,
             Vec<(Domain, Vec<([usize; D], Vec<[usize; D]>)>)>,
@@ -58,7 +58,7 @@ pub trait PcsRecursiveVerif<
         &self,
         circuit: &mut CircuitBuilder<F, D>,
         domain: &Domain,
-        point: &ChallengeWireId<D>,
+        point: &ExtensionWireId<D>,
     ) -> RecursiveLagrangeSels<D>;
 
     fn natural_domain_for_degree(&self, degree: usize) -> Domain;
@@ -73,10 +73,10 @@ pub trait PcsRecursiveVerif<
 }
 
 pub struct RecursiveLagrangeSels<const D: usize> {
-    pub is_first_row: ChallengeWireId<D>,
-    pub is_last_row: ChallengeWireId<D>,
-    pub is_transition: ChallengeWireId<D>,
-    pub inv_vanishing: ChallengeWireId<D>,
+    pub is_first_row: ExtensionWireId<D>,
+    pub is_last_row: ExtensionWireId<D>,
+    pub is_transition: ExtensionWireId<D>,
+    pub inv_vanishing: ExtensionWireId<D>,
 }
 
 pub trait RecursiveAir<F: Field, const D: usize> {
@@ -86,13 +86,13 @@ pub trait RecursiveAir<F: Field, const D: usize> {
         &self,
         builder: &mut CircuitBuilder<F, D>,
         sels: &RecursiveLagrangeSels<D>,
-        alpha: &ChallengeWireId<D>,
-        local_prep_values: &[ChallengeWireId<D>],
-        next_prep_values: &[ChallengeWireId<D>],
-        local_values: &[ChallengeWireId<D>],
-        next_values: &[ChallengeWireId<D>],
+        alpha: &ExtensionWireId<D>,
+        local_prep_values: &[ExtensionWireId<D>],
+        next_prep_values: &[ExtensionWireId<D>],
+        local_values: &[ExtensionWireId<D>],
+        next_values: &[ExtensionWireId<D>],
         public_values: &[WireId],
-    ) -> ChallengeWireId<D>;
+    ) -> ExtensionWireId<D>;
 
     fn get_log_quotient_degree(
         &self,

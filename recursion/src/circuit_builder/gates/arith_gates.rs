@@ -6,7 +6,7 @@ use p3_field::{BasedVectorSpace, Field};
 use crate::air::alu::cols::{ExtAddEvent, ExtFieldOpEvent, ExtMulEvent, ExtSubEvent, FieldOpEvent};
 use crate::air::ext_alu_air::BinomialExtension;
 use crate::air::{AddEvent, MulEvent, SubEvent};
-use crate::circuit_builder::ChallengeWireId;
+use crate::circuit_builder::ExtensionWireId;
 use crate::circuit_builder::circuit_builder::{CircuitBuilder, CircuitError, WireId};
 use crate::circuit_builder::gates::event::AllEvents;
 use crate::circuit_builder::gates::gate::Gate;
@@ -241,23 +241,23 @@ impl<F: Field + BinomiallyExtendable<D>, const D: usize> MulExtensionGate<F, D> 
 
     pub fn add_to_circuit(
         builder: &mut CircuitBuilder<F, D>,
-        a: ChallengeWireId<D>,
-        b: ChallengeWireId<D>,
-        c: ChallengeWireId<D>,
+        a: ExtensionWireId<D>,
+        b: ExtensionWireId<D>,
+        c: ExtensionWireId<D>,
     ) -> () {
         let gate = MulExtensionGate::<F, D>::new([a, b].concat(), c.to_vec());
         builder.add_gate(Box::new(gate));
     }
 
-    pub fn get_first_input_wires(&self) -> ChallengeWireId<D> {
+    pub fn get_first_input_wires(&self) -> ExtensionWireId<D> {
         self.inputs[0..D].try_into().unwrap()
     }
 
-    pub fn get_second_input_wires(&self) -> ChallengeWireId<D> {
+    pub fn get_second_input_wires(&self) -> ExtensionWireId<D> {
         self.inputs[D..2 * D].try_into().unwrap()
     }
 
-    pub fn get_output_wires(&self) -> ChallengeWireId<D> {
+    pub fn get_output_wires(&self) -> ExtensionWireId<D> {
         self.outputs.clone().try_into().unwrap()
     }
 }
@@ -361,23 +361,23 @@ impl<F: Field + BinomiallyExtendable<D>, const D: usize> SubExtensionGate<F, D> 
 
     pub fn add_to_circuit(
         builder: &mut CircuitBuilder<F, D>,
-        a: ChallengeWireId<D>,
-        b: ChallengeWireId<D>,
-        c: ChallengeWireId<D>,
+        a: ExtensionWireId<D>,
+        b: ExtensionWireId<D>,
+        c: ExtensionWireId<D>,
     ) -> () {
         let gate = SubExtensionGate::<F, D>::new([a, b].concat(), c.to_vec());
         builder.add_gate(Box::new(gate));
     }
 
-    pub fn get_first_input_wires(&self) -> ChallengeWireId<D> {
+    pub fn get_first_input_wires(&self) -> ExtensionWireId<D> {
         self.inputs[0..D].try_into().unwrap()
     }
 
-    pub fn get_second_input_wires(&self) -> ChallengeWireId<D> {
+    pub fn get_second_input_wires(&self) -> ExtensionWireId<D> {
         self.inputs[D..2 * D].try_into().unwrap()
     }
 
-    pub fn get_output_wires(&self) -> ChallengeWireId<D> {
+    pub fn get_output_wires(&self) -> ExtensionWireId<D> {
         self.outputs.clone().try_into().unwrap()
     }
 }
@@ -463,23 +463,23 @@ impl<F: Field + BinomiallyExtendable<D>, const D: usize> AddExtensionGate<F, D> 
 
     pub fn add_to_circuit(
         builder: &mut CircuitBuilder<F, D>,
-        a: ChallengeWireId<D>,
-        b: ChallengeWireId<D>,
-        c: ChallengeWireId<D>,
+        a: ExtensionWireId<D>,
+        b: ExtensionWireId<D>,
+        c: ExtensionWireId<D>,
     ) -> () {
         let gate = AddExtensionGate::<F, D>::new([a, b].concat(), c.to_vec());
         builder.add_gate(Box::new(gate));
     }
 
-    pub fn get_first_input_wires(&self) -> ChallengeWireId<D> {
+    pub fn get_first_input_wires(&self) -> ExtensionWireId<D> {
         self.inputs[0..D].try_into().unwrap()
     }
 
-    pub fn get_second_input_wires(&self) -> ChallengeWireId<D> {
+    pub fn get_second_input_wires(&self) -> ExtensionWireId<D> {
         self.inputs[D..2 * D].try_into().unwrap()
     }
 
-    pub fn get_output_wires(&self) -> ChallengeWireId<D> {
+    pub fn get_output_wires(&self) -> ExtensionWireId<D> {
         self.outputs.clone().try_into().unwrap()
     }
 }

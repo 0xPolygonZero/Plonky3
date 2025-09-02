@@ -1,5 +1,3 @@
-use std::marker::PhantomData;
-
 use itertools::Itertools;
 use itertools::zip_eq;
 use p3_challenger::CanObserve;
@@ -17,8 +15,8 @@ use p3_uni_stark::Proof;
 use p3_uni_stark::StarkGenericConfig;
 use p3_uni_stark::Val;
 
-use crate::circuit_builder::ChallengeWireId;
 use crate::circuit_builder::CircuitError;
+use crate::circuit_builder::ExtensionWireId;
 use crate::circuit_builder::gates::arith_gates::AddExtensionGate;
 use crate::circuit_builder::gates::arith_gates::MulExtensionGate;
 use crate::circuit_builder::gates::arith_gates::SubExtensionGate;
@@ -30,12 +28,11 @@ use crate::verifier::recursive_traits::RecursiveAir;
 use crate::verifier::recursive_traits::RecursiveStarkGenerationConfig;
 
 #[derive(Clone)]
-pub struct FriProofWires<F: Field, const D: usize, Comm: CommitRecursiveVerif, InputProof> {
+pub struct FriProofWires<const D: usize, Comm: CommitRecursiveVerif, InputProof> {
     pub commit_phase_commits: Vec<Comm>,
     pub query_proofs: Vec<QueryProofWires<InputProof>>,
     pub final_poly: Vec<usize>,
     pub pow_witness: usize,
-    _phantom_data: PhantomData<F>,
 }
 
 #[derive(Clone)]
@@ -60,10 +57,10 @@ pub struct CommitmentWires<Comm: CommitRecursiveVerif> {
 // TODO: Move these structures to their respective crates.
 #[derive(Clone)]
 pub struct OpenedValuesWires<const D: usize> {
-    pub trace_local_wires: Vec<ChallengeWireId<D>>,
-    pub trace_next_wires: Vec<ChallengeWireId<D>>,
-    pub quotient_chunks_wires: Vec<Vec<ChallengeWireId<D>>>,
-    pub random: Option<Vec<ChallengeWireId<D>>>,
+    pub trace_local_wires: Vec<ExtensionWireId<D>>,
+    pub trace_next_wires: Vec<ExtensionWireId<D>>,
+    pub quotient_chunks_wires: Vec<Vec<ExtensionWireId<D>>>,
+    pub random: Option<Vec<ExtensionWireId<D>>>,
 }
 
 // Simulated method as we don't have the sponges yet.
@@ -76,10 +73,10 @@ pub fn generate_challenges<
 >(
     config: &SC,
     circuit: &mut CircuitBuilder<Val<SC>, D>,
-    proof_wires: &ProofWires<Val<SC>, D, Comm, InputProof>,
+    proof_wires: &ProofWires<D, Comm, InputProof>,
     proof: &Proof<SC>,
     public_values: &Vec<WireId>,
-    challenges: &Vec<ChallengeWireId<D>>,
+    challenges: &Vec<ExtensionWireId<D>>,
     init_trace_domain: &Domain<SC>,
 ) where
     <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Commitment: CommitForRecursiveVerif<Val<SC>>,
@@ -107,15 +104,14 @@ pub fn generate_challenges<
                 query_proofs,
                 final_poly,
                 pow_witness: _,
-                _phantom_data: _,
             },
         degree_bits: _,
     } = proof_wires;
 
     let Proof {
         commitments,
-        opened_values,
-        opening_proof,
+        opened_values: _,
+        opening_proof: _,
         degree_bits,
     } = proof;
 
@@ -128,7 +124,7 @@ pub fn generate_challenges<
     // for v in local_wire_vals {
     //     challenger.observe(v.as_base().expect("The output should be a basis element"));
     // }
-
+    challenger.observe_slice(&local_comm);
     let public_values_vals = public_values
         .iter()
         .map(|wire| {
@@ -140,7 +136,7 @@ pub fn generate_challenges<
                 .unwrap()
         })
         .collect::<Vec<_>>();
-    challenger.observe_slice(&local_comm);
+    challenger.observe_slice(&public_values_vals);
     // 1
     challenge_values.push(challenger.sample_algebra_element());
 
@@ -283,7 +279,7 @@ pub fn generate_challenges<
 
     for (c, c_v) in challenges.iter().zip_eq(challenge_values.iter()) {
         let challenge_vals = c_v.as_basis_coefficients_slice().try_into().unwrap();
-        circuit.set_challenge_wires(*c, challenge_vals).unwrap();
+        circuit.set_extension_wires(*c, challenge_vals).unwrap();
     }
 }
 
@@ -292,19 +288,19 @@ fn get_circuit_challenges<
     const D: usize,
     InputProof,
 >(
-    proof_wires: &ProofWires<SC::Val, D, SC::Comm, InputProof>,
+    proof_wires: &ProofWires<D, SC::Comm, InputProof>,
     circuit: &mut CircuitBuilder<SC::Val, D>,
-) -> Vec<ChallengeWireId<D>> {
+) -> Vec<ExtensionWireId<D>> {
     let mut challenges = vec![];
     // Observe degree bits and degree_bits - is_zk.
     // Observe local wires.
     // Observe public values.
-    challenges.push(circuit.new_challenge_wires());
+    challenges.push(circuit.new_extension_wires());
     // Observe quotient chunks.
     // Observe random commitment if any.
     // zeta and zeta_next
-    challenges.push(circuit.new_challenge_wires());
-    challenges.push(circuit.new_challenge_wires());
+    challenges.push(circuit.new_extension_wires());
+    challenges.push(circuit.new_extension_wires());
 
     let pcs_challenges =
         <SC as RecursiveStarkGenerationConfig<InputProof, D>>::Pcs::get_challenges_circuit(
@@ -314,29 +310,14 @@ fn get_circuit_challenges<
 
     challenges.extend(pcs_challenges);
 
-    // This should be done by the PCS
-    // // Observe coms_to_verify.
-    // num_challenges += 1; // batch combination challenge
-
-    // // Observe the betas at the same time
-    // num_challenges += proof_wires.fri_proof.commit_phase_commits.len(); // betas
-
-    // // Observe final poly.
-    // num_challenges += proof_wires.fri_proof.query_proofs.len(); // final poly evaluations
-
-    // let mut challenges = Vec::with_capacity(num_challenges);
-    // for _ in 0..num_challenges {
-    //     challenges.push(circuit.new_challenge_wires());
-    // }
-
     challenges
 }
 
 #[derive(Clone)]
-pub struct ProofWires<F: Field, const D: usize, Comm: CommitRecursiveVerif, InputProof> {
+pub struct ProofWires<const D: usize, Comm: CommitRecursiveVerif, InputProof> {
     pub commitments_wires: CommitmentWires<Comm>,
     pub opened_values_wires: OpenedValuesWires<D>,
-    pub fri_proof: FriProofWires<F, D, Comm, InputProof>,
+    pub fri_proof: FriProofWires<D, Comm, InputProof>,
     degree_bits: usize,
 }
 
@@ -349,7 +330,7 @@ pub fn verify_circuit<
 >(
     config: &SC,
     air: &A,
-    proof_wires: &ProofWires<SC::Val, D, SC::Comm, InputProof>,
+    proof_wires: &ProofWires<D, SC::Comm, InputProof>,
     public_values: &Vec<WireId>,
 ) -> Result<(), CircuitError>
 where
@@ -379,7 +360,6 @@ where
                 query_proofs: _,
                 final_poly: _,
                 pow_witness: _,
-                _phantom_data: _,
             },
         degree_bits,
     } = proof_wires;
@@ -418,9 +398,9 @@ where
         return Err(CircuitError::InvalidProofShape);
     }
 
-    let alpha: ChallengeWireId<D> = challenge_wires[0];
-    let zeta: ChallengeWireId<D> = challenge_wires[1];
-    let zeta_next: ChallengeWireId<D> = challenge_wires[2];
+    let alpha: ExtensionWireId<D> = challenge_wires[0];
+    let zeta: ExtensionWireId<D> = challenge_wires[1];
+    let zeta_next: ExtensionWireId<D> = challenge_wires[2];
 
     // Need to simulate Fri here.
     let mut coms_to_verify = if let Some(r_commit) = &random_commit {
@@ -458,7 +438,7 @@ where
     ]);
     pcs.verify_circuit(&mut circuit, &challenge_wires[3..], &coms_to_verify);
 
-    let zero = circuit.add_challenge_constant(SC::Challenge::ZERO);
+    let zero = circuit.add_extension_constant(SC::Challenge::ZERO);
     let zps = quotient_chunks_domains
         .iter()
         .enumerate()
@@ -478,7 +458,7 @@ where
                     >(config, *other_domain, zeta, &mut circuit);
 
                     let first_point = circuit
-                        .add_challenge_constant(SC::Challenge::from(pcs.first_point(domain)));
+                        .add_extension_constant(SC::Challenge::from(pcs.first_point(domain)));
                     let other_v_n =
                         vanishing_poly_at_point_circuit::<InputProof, SC::Comm, SC, SC::Domain, D>(
                             config,
@@ -486,7 +466,7 @@ where
                             first_point,
                             &mut circuit,
                         );
-                    let div = circuit.new_challenge_wires();
+                    let div = circuit.new_extension_wires();
                     MulExtensionGate::<SC::Val, D>::add_to_circuit(
                         &mut circuit,
                         other_v_n,
@@ -494,7 +474,7 @@ where
                         v_n,
                     );
 
-                    let new_total = circuit.new_challenge_wires();
+                    let new_total = circuit.new_extension_wires();
                     MulExtensionGate::<SC::Val, D>::add_to_circuit(
                         &mut circuit,
                         total,
@@ -514,16 +494,16 @@ where
         let mut cur_s = zero;
         for (e_i, c) in chunk.iter().enumerate() {
             let e_i_wire =
-                circuit.add_challenge_constant(SC::Challenge::ith_basis_element(e_i).unwrap());
-            let inner_mul = circuit.new_challenge_wires();
+                circuit.add_extension_constant(SC::Challenge::ith_basis_element(e_i).unwrap());
+            let inner_mul = circuit.new_extension_wires();
             MulExtensionGate::<SC::Val, D>::add_to_circuit(&mut circuit, e_i_wire, *c, inner_mul);
-            let new_s = circuit.new_challenge_wires();
+            let new_s = circuit.new_extension_wires();
             AddExtensionGate::<SC::Val, D>::add_to_circuit(&mut circuit, cur_s, inner_mul, new_s);
             cur_s = inner_mul;
         }
-        let mul = circuit.new_challenge_wires();
+        let mul = circuit.new_extension_wires();
         MulExtensionGate::<SC::Val, D>::add_to_circuit(&mut circuit, cur_s, zp, mul);
-        let add_wire = circuit.new_challenge_wires();
+        let add_wire = circuit.new_extension_wires();
         AddExtensionGate::<SC::Val, D>::add_to_circuit(&mut circuit, quotient, mul, add_wire);
         quotient = add_wire;
     }
@@ -541,7 +521,7 @@ where
     );
 
     // Compute folded_constraints * sels.inv_vanishing.
-    let folded_mul = circuit.new_challenge_wires();
+    let folded_mul = circuit.new_extension_wires();
     MulExtensionGate::<SC::Val, D>::add_to_circuit(
         &mut circuit,
         folded_constraints,
@@ -564,9 +544,9 @@ fn vanishing_poly_at_point_circuit<
 >(
     config: &SC,
     domain: Domain,
-    zeta: ChallengeWireId<D>,
+    zeta: ExtensionWireId<D>,
     circuit: &mut CircuitBuilder<SC::Val, D>,
-) -> ChallengeWireId<D>
+) -> ExtensionWireId<D>
 where
     SC::Val: BinomiallyExtendable<D>,
     <SC as RecursiveStarkGenerationConfig<InputProof, D>>::Pcs:
@@ -574,16 +554,16 @@ where
 {
     let pcs = config.pcs();
     let inv =
-        circuit.add_challenge_constant(SC::Challenge::from(pcs.first_point(&domain).inverse()));
+        circuit.add_extension_constant(SC::Challenge::from(pcs.first_point(&domain).inverse()));
 
-    let mul = circuit.new_challenge_wires();
+    let mul = circuit.new_extension_wires();
     MulExtensionGate::<SC::Val, D>::add_to_circuit(circuit, zeta, inv, mul);
-    let size_wire = circuit.add_challenge_constant(SC::Challenge::from_usize(pcs.size(&domain)));
-    let exp = circuit.new_challenge_wires();
+    let size_wire = circuit.add_extension_constant(SC::Challenge::from_usize(pcs.size(&domain)));
+    let exp = circuit.new_extension_wires();
     MulExtensionGate::<SC::Val, D>::add_to_circuit(circuit, mul, size_wire, exp);
 
-    let one = circuit.add_challenge_constant(SC::Challenge::ONE);
-    let v_n = circuit.new_challenge_wires();
+    let one = circuit.add_extension_constant(SC::Challenge::ONE);
+    let v_n = circuit.new_extension_wires();
     SubExtensionGate::<SC::Val, D>::add_to_circuit(circuit, exp, one, v_n);
 
     v_n
