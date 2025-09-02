@@ -1,20 +1,14 @@
-use itertools::Itertools;
-use itertools::zip_eq;
-use p3_field::BasedVectorSpace;
-use p3_field::Field;
-use p3_field::PrimeCharacteristicRing;
+use itertools::{Itertools, zip_eq};
 use p3_field::extension::BinomiallyExtendable;
+use p3_field::{BasedVectorSpace, Field, PrimeCharacteristicRing};
 
-use crate::circuit_builder::ChallengeWireId;
-use crate::circuit_builder::CircuitError;
-use crate::circuit_builder::gates::arith_gates::AddExtensionGate;
-use crate::circuit_builder::gates::arith_gates::MulExtensionGate;
-use crate::circuit_builder::gates::arith_gates::SubExtensionGate;
-use crate::circuit_builder::{CircuitBuilder, WireId};
-use crate::verifier::recursive_traits::CommitRecursiveVerif;
-use crate::verifier::recursive_traits::PcsRecursiveVerif;
-use crate::verifier::recursive_traits::RecursiveAir;
-use crate::verifier::recursive_traits::RecursiveStarkGenerationConfig;
+use crate::circuit_builder::gates::arith_gates::{
+    AddExtensionGate, MulExtensionGate, SubExtensionGate,
+};
+use crate::circuit_builder::{ChallengeWireId, CircuitBuilder, CircuitError, WireId};
+use crate::verifier::recursive_traits::{
+    CommitRecursiveVerif, PcsRecursiveVerif, RecursiveAir, RecursiveStarkGenerationConfig,
+};
 
 #[derive(Clone)]
 pub struct FriProofWires<Comm: CommitRecursiveVerif, InputProof> {
@@ -306,7 +300,7 @@ pub fn verify_circuit<
     air: &A,
     proof_wires: &ProofWires<D, SC::Comm, InputProof>,
     public_values: &Vec<WireId>,
-) -> Result<(), CircuitError>
+) -> Result<CircuitBuilder<impl BinomiallyExtendable<D>, D>, CircuitError>
 where
     SC::Val: BinomiallyExtendable<D>,
     A: RecursiveAir<SC::Val, D>,
@@ -497,7 +491,7 @@ where
     // Check that folded_constraints * sels.inv_vanishing == quotient
     SubExtensionGate::<SC::Val, D>::add_to_circuit(&mut circuit, folded_mul, quotient, zero);
 
-    Ok(())
+    Ok(circuit)
 }
 
 fn vanishing_poly_at_point_circuit<

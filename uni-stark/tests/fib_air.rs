@@ -1,5 +1,6 @@
 use core::borrow::Borrow;
 use std::array;
+use std::marker::PhantomData;
 
 use itertools::Itertools;
 use p3_air::{Air, AirBuilder, AirBuilderWithPublicValues, BaseAir};
@@ -7,7 +8,7 @@ use p3_baby_bear::{BabyBear, Poseidon2BabyBear};
 use p3_challenger::{DuplexChallenger, HashChallenger, SerializingChallenger32};
 use p3_commit::ExtensionMmcs;
 use p3_dft::Radix2DitParallel;
-use p3_field::extension::BinomialExtensionField;
+use p3_field::extension::{BinomialExtensionField, BinomiallyExtendable};
 use p3_field::{BasedVectorSpace, Field, PrimeCharacteristicRing, PrimeField64};
 use p3_fri::{HidingFriPcs, TwoAdicFriPcs, create_test_fri_params};
 use p3_keccak::{Keccak256Hash, KeccakF};
@@ -15,12 +16,14 @@ use p3_matrix::Matrix;
 use p3_matrix::dense::RowMajorMatrix;
 use p3_merkle_tree::{MerkleTreeHidingMmcs, MerkleTreeMmcs};
 use p3_recursion::circuit_builder::CircuitBuilder;
+use p3_recursion::verifier::circuit_verifier::verify_circuit;
+use p3_recursion::verifier::recursive_traits::{RecursiveAir, RecursiveStarkGenerationConfig};
 use p3_symmetric::{
     CompressionFunctionFromHasher, PaddingFreeSponge, SerializingHasher, TruncatedPermutation,
 };
 use p3_uni_stark::{
-    StarkConfig, SymbolicExpression, get_symbolic_constraints, prove, symbolic_to_circuit, verify,
-    verify_with_return_values,
+    Entry, StarkConfig, SymbolicExpression, SymbolicVariable, get_symbolic_constraints, prove,
+    symbolic_to_circuit, verify, verify_with_return_values,
 };
 use rand::SeedableRng;
 use rand::rngs::SmallRng;
@@ -109,6 +112,66 @@ impl<F> Borrow<FibonacciRow<F>> for [F] {
         debug_assert!(suffix.is_empty(), "Alignment should match");
         debug_assert_eq!(shorts.len(), 1);
         &shorts[0]
+    }
+}
+
+impl<F: Field + BinomiallyExtendable<D>, const D: usize> RecursiveAir<F, D> for FibonacciAir {
+    type Var = F;
+
+    fn width(&self) -> usize {
+        NUM_FIBONACCI_COLS
+    }
+
+    fn eval_folded_circuit(
+        &self,
+        builder: &mut CircuitBuilder<F, D>,
+        sels: &p3_recursion::verifier::recursive_traits::RecursiveLagrangeSels<D>,
+        alpha: &p3_recursion::circuit_builder::ChallengeWireId<D>,
+        public_values: &[p3_recursion::circuit_builder::WireId],
+    ) -> p3_recursion::circuit_builder::ChallengeWireId<D> {
+        type EF<F, const D: usize> = BinomialExtensionField<F, D>;
+        let symbolic_constraints = get_symbolic_constraints(self, 0, public_values.len());
+
+        let folded_symbolic_constraints = {
+            let mut acc = SymbolicExpression::Constant(EF::ZERO);
+            let ch = SymbolicExpression::Variable(SymbolicVariable::new(Entry::Challenge, 0));
+            for s_c in symbolic_constraints.iter() {
+                acc = ch.clone() * acc;
+                acc += s_c.clone();
+            }
+            acc
+        };
+
+        let mut circuit_local_values = Vec::with_capacity(NUM_FIBONACCI_COLS);
+        let mut circuit_next_values = Vec::with_capacity(NUM_FIBONACCI_COLS);
+        for _ in 0..NUM_FIBONACCI_COLS {
+            circuit_local_values.push(builder.new_challenge_wires());
+            circuit_next_values.push(builder.new_challenge_wires());
+        }
+
+        let sum = symbolic_to_circuit::<F, BinomialExtensionField<F, D>, D>(
+            sels.is_first_row,
+            sels.is_last_row,
+            sels.is_transition,
+            &[*alpha],
+            &public_values,
+            &[],
+            &[],
+            &circuit_local_values,
+            &circuit_next_values,
+            &folded_symbolic_constraints,
+            builder,
+        );
+        sum
+    }
+
+    fn get_log_quotient_degree(
+        &self,
+        _preprocessed_width: usize,
+        _num_public_values: usize,
+        _is_zk: usize,
+    ) -> usize {
+        1
     }
 }
 
@@ -382,4 +445,95 @@ fn test_symbolic_to_circuit() {
     .unwrap();
 
     assert!(folded_constraints == challenge_sum);
+}
+
+pub struct RecursiveStarkConfig<const D: usize> {
+    pcs: Pcs,
+    challenger: Challenger,
+    _phantom: PhantomData<Challenge>,
+}
+
+impl<const D: usize> RecursiveStarkConfig<D> {
+    pub const fn new(pcs: Pcs, challenger: Challenger) -> Self {
+        Self {
+            pcs,
+            challenger,
+            _phantom: PhantomData,
+        }
+    }
+}
+
+impl<InputProof> RecursiveStarkGenerationConfig<InputProof, 4> for RecursiveStarkConfig<D> {
+    type Val = Val;
+
+    type Domain = Pcs::Domain;
+
+    type Challenge = Challenge;
+
+    type Comm = Comm;
+
+    type Pcs = Pcs;
+
+    fn pcs(&self) -> Self::Pcs {
+        todo!()
+    }
+
+    fn is_zk(&self) -> usize {
+        0
+    }
+}
+
+#[test]
+fn test_recursive_fib_air() {
+    type ByteHash = Keccak256Hash;
+    let byte_hash = ByteHash {};
+
+    type U64Hash = PaddingFreeSponge<KeccakF, 25, 17, 4>;
+    let u64_hash = U64Hash::new(KeccakF {});
+
+    type FieldHash = SerializingHasher<U64Hash>;
+    let field_hash = FieldHash::new(u64_hash);
+
+    type MyCompress = CompressionFunctionFromHasher<U64Hash, 2, 4>;
+    let compress = MyCompress::new(u64_hash);
+
+    type ValHidingMmcs = MerkleTreeHidingMmcs<
+        [Val; p3_keccak::VECTOR_LEN],
+        [u64; p3_keccak::VECTOR_LEN],
+        FieldHash,
+        MyCompress,
+        SmallRng,
+        4,
+        4,
+    >;
+
+    let rng = SmallRng::seed_from_u64(1);
+    let val_mmcs = ValHidingMmcs::new(field_hash, compress, rng);
+
+    type Challenger = SerializingChallenger32<Val, HashChallenger<u8, ByteHash, 32>>;
+
+    type ChallengeHidingMmcs = ExtensionMmcs<Val, Challenge, ValHidingMmcs>;
+
+    let n = 1 << 3;
+    let x = 21;
+
+    let challenge_mmcs = ChallengeHidingMmcs::new(val_mmcs.clone());
+    let dft = Dft::default();
+    let trace = generate_trace_rows::<Val>(0, 1, n);
+    let fri_params = create_test_fri_params(challenge_mmcs, 2);
+    type HidingPcs = HidingFriPcs<Val, Dft, ValHidingMmcs, ChallengeHidingMmcs, SmallRng>;
+    type MyHidingConfig = StarkConfig<HidingPcs, Challenge, Challenger>;
+    let pcs = HidingPcs::new(dft, val_mmcs, fri_params, 4, SmallRng::seed_from_u64(1));
+    let challenger = Challenger::from_hasher(vec![], byte_hash);
+    let config = MyHidingConfig::new(pcs, challenger);
+
+    let air = FibonacciAir {};
+    let pis = vec![BabyBear::ZERO, BabyBear::ONE, BabyBear::from_u64(x)];
+    let proof = prove(&config, &air, trace, &pis);
+    let _ = verify(&config, &FibonacciAir {}, &proof, &pis).expect("verification failed");
+
+    let (alpha, sels, folded_constraints) =
+        verify_with_return_values(&config, &air, &proof, &pis).expect("verification failed");
+
+    let verifier_circuit = verify_circuit(&config);
 }

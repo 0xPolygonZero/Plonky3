@@ -1,9 +1,8 @@
-use p3_field::{ExtensionField, Field, extension::BinomiallyExtendable};
+use p3_field::extension::BinomiallyExtendable;
+use p3_field::{ExtensionField, Field};
 
-use crate::{
-    circuit_builder::{ChallengeWireId, CircuitBuilder, WireId},
-    verifier::circuit_verifier::ProofWires,
-};
+use crate::circuit_builder::{ChallengeWireId, CircuitBuilder, WireId};
+use crate::verifier::circuit_verifier::ProofWires;
 
 pub trait CommitRecursiveVerif {
     fn get_commit_challenges_circuit() -> Vec<WireId>;
