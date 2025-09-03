@@ -1,15 +1,16 @@
-pub mod circuit_verifier;
-pub mod recursive_pcs;
-pub mod recursive_traits;
+use p3_air::AirBuilder;
+use p3_uni_stark::{PcsError, StarkGenericConfig, VerificationError};
 
-use p3_uni_stark::{PcsError, StarkGenericConfig, VerificationError, verify as base_verify};
-
+use crate::air::asic::Asic;
 use crate::prover::RecursiveProof;
 
-pub fn verify<SC: StarkGenericConfig>(
+pub mod circuit_verifier;
+pub mod recursive_traits;
+
+pub fn verify<AB: AirBuilder, SC: StarkGenericConfig, const D: usize>(
     config: &SC,
-    proof: RecursiveProof<SC>,
+    asic: &Asic<SC, AB, D>,
+    proof: &RecursiveProof<SC>,
 ) -> Result<(), VerificationError<PcsError<SC>>> {
-    base_verify(config, &proof.add_air, &proof.add_proof, &vec![])?;
-    base_verify(config, &proof.sub_air, &proof.sub_proof, &vec![])
+    asic.verify_chips(config, proof)
 }

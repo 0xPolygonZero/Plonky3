@@ -1,10 +1,9 @@
 use p3_field::Field;
 use p3_matrix::dense::RowMajorMatrix;
 
-use crate::air::{
-    AddEvent, MulEvent, SubEvent,
-    alu::cols::{ExtAddEvent, ExtMulEvent, ExtSubEvent},
-};
+use crate::air::alu::cols::{ExtAddEvent, ExtMulEvent, ExtSubEvent};
+use crate::air::witness::air::RomEvent;
+use crate::air::{AddEvent, MulEvent, SubEvent};
 
 #[derive(Default)]
 pub struct AllEvents<F: Field, const D: usize> {
@@ -15,6 +14,8 @@ pub struct AllEvents<F: Field, const D: usize> {
     pub ext_add_events: Vec<ExtAddEvent<F, D>>,
     pub ext_sub_events: Vec<ExtSubEvent<F, D>>,
     pub ext_mul_events: Vec<ExtMulEvent<F, D>>,
+
+    pub witness_events: Vec<RomEvent<F>>,
 }
 
 pub trait Table<F: Field, const D: usize> {

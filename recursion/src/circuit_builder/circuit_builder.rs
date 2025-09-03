@@ -8,6 +8,7 @@ use p3_uni_stark::{
     Commitments, Entry, OpenedValues, Proof, StarkGenericConfig, SymbolicExpression, Val,
 };
 
+use crate::air::witness::air::RomEvent;
 use crate::circuit_builder::gates::arith_gates::{
     AddExtensionGate, MulExtensionGate, SubExtensionGate,
 };
@@ -137,10 +138,22 @@ impl<F: Field, const D: usize> CircuitBuilder<F, D> {
             ext_add_events: Vec::new(),
             ext_sub_events: Vec::new(),
             ext_mul_events: Vec::new(),
+            witness_events: Vec::new(),
         };
+
+        // Generaete events for all gates
         for gate in gate_instances.iter_mut() {
             gate.generate(self, &mut all_events)?;
         }
+
+        // Generate the witeness events from the wire values
+        all_events.witness_events = self
+            .wires
+            .iter()
+            .enumerate()
+            .filter_map(|(i, v)| v.map(|val| RomEvent(i, val)))
+            .collect(); // TODO: avoid the intermediate allocation?
+
         Ok(all_events)
     }
 }
@@ -158,6 +171,7 @@ where
         trace_wires: trace_wires_comm,
         quotient_chunks_wires: quotient_chunks_wires_comm,
         random_commit,
+        ..
     } = comm_wires;
 
     circuit.set_wire_values(&trace_wires_comm.get_wires(), &comm.trace.get_values())?;

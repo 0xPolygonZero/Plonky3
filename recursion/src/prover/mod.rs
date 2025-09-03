@@ -1,42 +1,43 @@
+pub mod tables;
+
+use p3_air::AirBuilder;
 use p3_uni_stark::{Proof, StarkGenericConfig, Val};
 
-use crate::air::AluAir;
-use crate::air::alu::air::FieldOperation;
 use crate::air::asic::Asic;
 use crate::circuit_builder::gates::event::AllEvents;
-use p3_uni_stark::prove as base_prove;
 
 pub struct RecursiveProof<SC: StarkGenericConfig> {
-    pub add_air: AluAir<1>,
-    pub sub_air: AluAir<1>,
-    pub add_proof: Proof<SC>,
-    pub sub_proof: Proof<SC>,
+    pub proofs: Vec<Proof<SC>>,
 }
 
-pub fn prove<SC, const D: usize>(
+pub fn prove<SC, AB, const D: usize>(
     config: &SC,
-    asic: Asic<Val<SC>, D>,
-    all_events: AllEvents<Val<SC>, D>,
+    asic: &Asic<SC, AB, D>,
+    all_events: &AllEvents<Val<SC>, D>,
 ) -> RecursiveProof<SC>
 where
+    AB: AirBuilder,
     SC: StarkGenericConfig,
 {
     let traces = asic.generate_trace(&all_events);
 
-    let add_air: AluAir<1> = AluAir {
-        op: FieldOperation::Add,
-    };
-    let sub_air: AluAir<1> = AluAir {
-        op: FieldOperation::Sub,
-    };
+    asic.prove_chips(config, traces)
+}
 
-    let add_proof = base_prove(config, &add_air, traces[0].clone(), &vec![]);
-    let sub_proof = base_prove(config, &sub_air, traces[1].clone(), &vec![]);
+pub trait ProofSystem<const D: usize> {
+    type Config: StarkGenericConfig;
+    type Builder: AirBuilder<F = Val<Self::Config>>;
+    type Proof;
+    type Error;
 
-    RecursiveProof {
-        add_air,
-        sub_air,
-        add_proof,
-        sub_proof,
-    }
+    fn prove<'a>(
+        config: &Self::Config,
+        asic: &Asic<Self::Config, Self::Builder, D>,
+        all_events: &AllEvents<Val<Self::Config>, D>,
+    ) -> Result<Self::Proof, Self::Error>;
+    fn verify<'a>(
+        config: &Self::Config,
+        asic: &Asic<Self::Config, Self::Builder, D>,
+        proof: &Self::Proof,
+    ) -> Result<(), Self::Error>;
 }
