@@ -1,10 +1,9 @@
 use std::array;
 
 use itertools::Itertools;
-use p3_commit::{Mmcs, Pcs};
+use p3_commit::Pcs;
 use p3_field::extension::BinomiallyExtendable;
 use p3_field::{BasedVectorSpace, ExtensionField, Field};
-use p3_fri::FriProof;
 use p3_uni_stark::{
     Commitments, Entry, OpenedValues, Proof, StarkGenericConfig, SymbolicExpression, Val,
 };
@@ -14,10 +13,8 @@ use crate::circuit_builder::gates::arith_gates::{
 };
 use crate::circuit_builder::gates::event::AllEvents;
 use crate::circuit_builder::gates::gate::Gate;
-use crate::verifier::circuit_verifier::{
-    CommitmentWires, FriProofWires, OpenedValuesWires, ProofWires,
-};
-use crate::verifier::recursive_traits::{CommitForRecursiveVerif, CommitRecursiveVerif};
+use crate::verifier::circuit_verifier::{CommitmentWires, OpenedValuesWires, ProofWires};
+use crate::verifier::recursive_traits::{ForRecursiveVersion, RecursiveVersion};
 
 pub type WireId = usize;
 
@@ -149,13 +146,13 @@ impl<F: Field, const D: usize> CircuitBuilder<F, D> {
 }
 
 /// Function which, given `CommitmentWires` and `Commitments`, sets the wires to the associated values.
-pub fn set_commitment_wires<SC: StarkGenericConfig, Comm: CommitRecursiveVerif, const D: usize>(
+pub fn set_commitment_wires<SC: StarkGenericConfig, Comm: RecursiveVersion, const D: usize>(
     circuit: &mut CircuitBuilder<Val<SC>, D>,
     comm_wires: &CommitmentWires<Comm>,
     comm: &Commitments<<SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Commitment>,
 ) -> Result<(), CircuitError>
 where
-    <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Commitment: CommitForRecursiveVerif<Val<SC>>,
+    <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Commitment: ForRecursiveVersion<Val<SC>>,
 {
     let CommitmentWires {
         trace_wires: trace_wires_comm,
@@ -182,13 +179,13 @@ where
 }
 
 /// Function which, given `OpenedValuesWires` and `OpenedValues`, sets the wires to the aassociated values.
-pub fn set_opened_wires<SC: StarkGenericConfig, Comm: CommitRecursiveVerif, const D: usize>(
+pub fn set_opened_wires<SC: StarkGenericConfig, Comm: RecursiveVersion, const D: usize>(
     circuit: &mut CircuitBuilder<Val<SC>, D>,
     opened_wires: &OpenedValuesWires<D>,
     opened_values: OpenedValues<SC::Challenge>,
 ) -> Result<(), CircuitError>
 where
-    <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Commitment: CommitForRecursiveVerif<Val<SC>>,
+    <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Commitment: ForRecursiveVersion<Val<SC>>,
 {
     let OpenedValuesWires {
         trace_local_wires,
@@ -234,8 +231,8 @@ where
 /// Given a proof and proof wires, this function sets the proof wires with the corresponding values.
 pub fn set_proof_wires<
     SC: StarkGenericConfig,
-    Comm: CommitRecursiveVerif,
-    InputProof,
+    Comm: RecursiveVersion,
+    InputProof: RecursiveVersion,
     const D: usize,
 >(
     circuit: &mut CircuitBuilder<Val<SC>, D>,
@@ -243,18 +240,16 @@ pub fn set_proof_wires<
     proof: Proof<SC>,
 ) -> Result<(), CircuitError>
 where
-    <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Commitment: CommitForRecursiveVerif<Val<SC>>,
+    <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Commitment: ForRecursiveVersion<Val<SC>>,
+    <<SC as StarkGenericConfig>::Pcs as Pcs<
+        <SC as StarkGenericConfig>::Challenge,
+        <SC as StarkGenericConfig>::Challenger,
+    >>::Proof: ForRecursiveVersion<Val<SC>>,
 {
     let ProofWires {
         commitments_wires,
         opened_values_wires,
-        fri_proof:
-            FriProofWires {
-                commit_phase_commits: _,
-                query_proofs: _,
-                final_poly: _,
-                pow_witness: _,
-            },
+        opening_proof: opening_proof_wires,
         ..
     } = proof_wires;
 
@@ -271,6 +266,9 @@ where
     // Set opened values.
     set_opened_wires::<SC, Comm, D>(circuit, opened_values_wires, opened_values)?;
 
+    let opening_proof_wires = opening_proof_wires.get_wires();
+    let opening_proof_values = opening_proof.get_values();
+    circuit.set_wire_values(&opening_proof_wires, &opening_proof_values)?;
     Ok(())
 }
 
