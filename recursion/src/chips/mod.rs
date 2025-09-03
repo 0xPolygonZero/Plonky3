@@ -1,6 +1,7 @@
 pub mod alu;
 pub mod asic;
-pub mod ext_alu_air;
+pub mod ext_alu;
+// pub mod merkle_tree;
 pub mod witness;
 
 pub use alu::air::AluAir;

@@ -3,22 +3,30 @@ use std::marker::PhantomData;
 
 use p3_field::Field;
 
-pub struct AddEvent<F, const R: usize = 1>(pub FieldOpEvent<F, R>);
-pub struct SubEvent<F, const R: usize = 1>(pub FieldOpEvent<F, R>);
-pub struct MulEvent<F, const R: usize = 1>(pub FieldOpEvent<F>);
+use crate::chips::ext_alu::binomial_extension::BinomialExtension;
 
-pub struct ExtAddEvent<F, const D: usize, const R: usize = 1>(pub ExtFieldOpEvent<F, D, R>);
-pub struct ExtSubEvent<F, const D: usize, const R: usize = 1>(pub ExtFieldOpEvent<F, D, R>);
-pub struct ExtMulEvent<F, const D: usize, const R: usize = 1>(pub ExtFieldOpEvent<F, D, R>);
+pub struct AddEvent<F, const R: usize = 1>(pub FieldOpEvent<usize, F, R>);
+pub struct SubEvent<F, const R: usize = 1>(pub FieldOpEvent<usize, F, R>);
+pub struct MulEvent<F, const R: usize = 1>(pub FieldOpEvent<usize, F, R>);
+
+pub struct ExtAddEvent<F, const D: usize, const R: usize = 1>(
+    pub FieldOpEvent<[usize; D], BinomialExtension<F, D>, R>,
+);
+pub struct ExtSubEvent<F, const D: usize, const R: usize = 1>(
+    pub FieldOpEvent<[usize; D], BinomialExtension<F, D>, R>,
+);
+pub struct ExtMulEvent<F, const D: usize, const R: usize = 1>(
+    pub FieldOpEvent<[usize; D], BinomialExtension<F, D>, R>,
+);
 
 #[derive(Debug)]
 /// Represents an event in the field operation trace.
-pub struct FieldOpEvent<T, const R: usize = 1> {
-    pub left_addr: [usize; R],
+pub struct FieldOpEvent<W, T, const R: usize = 1> {
+    pub left_addr: [W; R],
     pub left_val: [T; R],
-    pub right_addr: [usize; R],
+    pub right_addr: [W; R],
     pub right_val: [T; R],
-    pub res_addr: [usize; R],
+    pub res_addr: [W; R],
     pub res_val: [T; R],
 }
 
@@ -57,13 +65,4 @@ impl<F: Field, const R: usize> BorrowMut<AluCols<F, R>> for [F] {
         debug_assert_eq!(shorts.len(), 1);
         &mut shorts[0]
     }
-}
-
-pub struct ExtFieldOpEvent<T, const D: usize, const R: usize> {
-    pub left_addr: [[usize; D]; R],
-    pub left_val: [[T; D]; R],
-    pub right_addr: [[usize; D]; R],
-    pub right_val: [[T; D]; R],
-    pub res_addr: [[usize; D]; R],
-    pub res_val: [[T; D]; R],
 }

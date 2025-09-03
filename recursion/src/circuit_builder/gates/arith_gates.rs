@@ -3,9 +3,9 @@ use std::array;
 use p3_field::extension::{BinomialExtensionField, BinomiallyExtendable};
 use p3_field::{BasedVectorSpace, Field};
 
-use crate::air::alu::cols::{ExtAddEvent, ExtFieldOpEvent, ExtMulEvent, ExtSubEvent, FieldOpEvent};
-use crate::air::ext_alu_air::BinomialExtension;
-use crate::air::{AddEvent, MulEvent, SubEvent};
+use crate::chips::alu::cols::{ExtAddEvent, ExtMulEvent, ExtSubEvent, FieldOpEvent};
+use crate::chips::ext_alu::binomial_extension::BinomialExtension;
+use crate::chips::{AddEvent, MulEvent, SubEvent};
 use crate::circuit_builder::ExtensionWireId;
 use crate::circuit_builder::circuit_builder::{CircuitBuilder, CircuitError, WireId};
 use crate::circuit_builder::gates::event::AllEvents;
@@ -325,13 +325,13 @@ impl<F: Field + BinomiallyExtendable<D>, const D: usize> Gate<F, D> for MulExten
             (inp2, res_slice.try_into().unwrap())
         };
 
-        all_events.ext_mul_events.push(ExtMulEvent(ExtFieldOpEvent {
+        all_events.ext_mul_events.push(ExtMulEvent(FieldOpEvent {
             left_addr: [self.get_first_input_wires(); 1],
-            left_val: [inp1; 1],
+            left_val: [BinomialExtension(inp1); 1],
             right_addr: [self.get_second_input_wires(); 1],
-            right_val: [inp2; 1],
+            right_val: [BinomialExtension(inp2); 1],
             res_addr: [self.get_output_wires(); 1],
-            res_val: [res; 1],
+            res_val: [BinomialExtension(res); 1],
         }));
 
         Ok(())
@@ -426,13 +426,13 @@ impl<F: Field + BinomiallyExtendable<D>, const D: usize> Gate<F, D> for SubExten
         let res = inp1_ext - inp2_ext;
         builder.set_wire_values(&self.get_output_wires(), &res.0)?;
 
-        all_events.ext_sub_events.push(ExtSubEvent(ExtFieldOpEvent {
+        all_events.ext_sub_events.push(ExtSubEvent(FieldOpEvent {
             left_addr: [self.get_first_input_wires(); 1],
-            left_val: [inp1; 1],
+            left_val: [BinomialExtension(inp1); 1],
             right_addr: [self.get_second_input_wires(); 1],
-            right_val: [inp2; 1],
+            right_val: [BinomialExtension(inp2); 1],
             res_addr: [self.get_output_wires(); 1],
-            res_val: [res.0; 1],
+            res_val: [BinomialExtension(res.0); 1],
         }));
 
         Ok(())
@@ -528,13 +528,13 @@ impl<F: Field + BinomiallyExtendable<D>, const D: usize> Gate<F, D> for AddExten
         let res = inp1_ext + inp2_ext;
         builder.set_wire_values(&self.get_output_wires(), &res.0)?;
 
-        all_events.ext_add_events.push(ExtAddEvent(ExtFieldOpEvent {
+        all_events.ext_add_events.push(ExtAddEvent(FieldOpEvent {
             left_addr: [self.get_first_input_wires(); 1],
-            left_val: [inp1; 1],
+            left_val: [BinomialExtension(inp1); 1],
             right_addr: [self.get_second_input_wires(); 1],
-            right_val: [inp2; 1],
+            right_val: [BinomialExtension(inp2); 1],
             res_addr: [self.get_output_wires(); 1],
-            res_val: [res.0; 1],
+            res_val: [BinomialExtension(res.0); 1],
         }));
 
         Ok(())

@@ -8,7 +8,7 @@ use p3_uni_stark::{
     Commitments, Entry, OpenedValues, Proof, StarkGenericConfig, SymbolicExpression, Val,
 };
 
-use crate::air::witness::air::RomEvent;
+use crate::chips::witness::air::RomEvent;
 use crate::circuit_builder::gates::arith_gates::{
     AddExtensionGate, MulExtensionGate, SubExtensionGate,
 };

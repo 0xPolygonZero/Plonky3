@@ -11,6 +11,12 @@ pub trait AirWithTraceGenerationFromEvents<SC: StarkGenericConfig, AB: AirBuilde
     Air<SymbolicAirBuilder<Val<SC>>> + for<'a> Air<ProverConstraintFolder<'a, SC>>
 {
     fn generate_trace(&self, all_events: &AllEvents<F>) -> RowMajorMatrix<F>;
+    fn prove_chip(&self, config: &SC, trace: RowMajorMatrix<Val<SC>>) -> Proof<SC>;
+    fn verify_chip(
+        &self,
+        config: &SC,
+        proof: &Proof<SC>,
+    ) -> Result<(), VerificationError<PcsError<SC>>>;
 }
 #[cfg(debug_assertions)]
 pub trait AirWithTraceGenerationFromEvents<SC: StarkGenericConfig, AB: AirBuilder, const D: usize>:
