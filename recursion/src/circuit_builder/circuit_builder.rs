@@ -20,19 +20,18 @@ use crate::verifier::recursive_traits::{ForRecursiveVersion, RecursiveVersion};
 pub type WireId = usize;
 
 #[derive(Default)]
-pub struct CircuitBuilder<F: Field, const D: usize> {
+pub struct CircuitBuilder<F: Field, const D: usize, const DIGEST_ELEMS: usize> {
     wires: Vec<Option<F>>,
-    gate_instances: Vec<Box<dyn Gate<F, D>>>,
+    gate_instances: Vec<Box<dyn Gate<F, D, DIGEST_ELEMS>>>,
 }
 
 pub type ExtensionWireId<const D: usize> = [WireId; D];
 
-impl<F: Field, const D: usize> CircuitBuilder<F, D> {
+impl<F: Field, const D: usize, const DIGEST_ELEMS: usize> CircuitBuilder<F, D, DIGEST_ELEMS> {
     pub fn new() -> Self {
         CircuitBuilder {
             wires: Vec::new(),
             gate_instances: Vec::new(),
-            ..Default::default()
         }
     }
 
@@ -45,7 +44,7 @@ impl<F: Field, const D: usize> CircuitBuilder<F, D> {
         array::from_fn(|_| self.new_wire())
     }
 
-    pub fn add_gate(&mut self, gate: Box<dyn Gate<F, D>>) {
+    pub fn add_gate(&mut self, gate: Box<dyn Gate<F, D, DIGEST_ELEMS>>) {
         self.gate_instances.push(gate);
     }
 
@@ -125,20 +124,22 @@ impl<F: Field, const D: usize> CircuitBuilder<F, D> {
         self.set_wire_values(ids, values)
     }
 
-    pub fn get_instances(&self) -> &Vec<Box<dyn Gate<F, D>>> {
+    pub fn get_instances(&self) -> &Vec<Box<dyn Gate<F, D, DIGEST_ELEMS>>> {
         &self.gate_instances
     }
 
-    pub fn generate(&mut self) -> Result<AllEvents<F, D>, CircuitError> {
+    pub fn generate(&mut self) -> Result<AllEvents<F, D, DIGEST_ELEMS>, CircuitError> {
         let mut gate_instances = core::mem::take(&mut self.gate_instances);
+
         let mut all_events = AllEvents {
-            add_events: Vec::new(),
-            sub_events: Vec::new(),
-            mul_events: Vec::new(),
-            ext_add_events: Vec::new(),
-            ext_sub_events: Vec::new(),
-            ext_mul_events: Vec::new(),
-            witness_events: Vec::new(),
+            add_events: vec![],
+            sub_events: vec![],
+            mul_events: vec![],
+            ext_add_events: vec![],
+            ext_sub_events: vec![],
+            ext_mul_events: vec![],
+            merkle_path_events: vec![],
+            witness_events: vec![],
         };
 
         // Generaete events for all gates
@@ -159,8 +160,13 @@ impl<F: Field, const D: usize> CircuitBuilder<F, D> {
 }
 
 /// Function which, given `CommitmentWires` and `Commitments`, sets the wires to the associated values.
-pub fn set_commitment_wires<SC: StarkGenericConfig, Comm: RecursiveVersion, const D: usize>(
-    circuit: &mut CircuitBuilder<Val<SC>, D>,
+pub fn set_commitment_wires<
+    SC: StarkGenericConfig,
+    Comm: RecursiveVersion,
+    const D: usize,
+    const DIGEST_ELEMS: usize,
+>(
+    circuit: &mut CircuitBuilder<Val<SC>, D, DIGEST_ELEMS>,
     comm_wires: &CommitmentWires<Comm>,
     comm: &Commitments<<SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Commitment>,
 ) -> Result<(), CircuitError>
@@ -193,8 +199,13 @@ where
 }
 
 /// Function which, given `OpenedValuesWires` and `OpenedValues`, sets the wires to the aassociated values.
-pub fn set_opened_wires<SC: StarkGenericConfig, Comm: RecursiveVersion, const D: usize>(
-    circuit: &mut CircuitBuilder<Val<SC>, D>,
+pub fn set_opened_wires<
+    SC: StarkGenericConfig,
+    Comm: RecursiveVersion,
+    const D: usize,
+    const DIGEST_ELEMS: usize,
+>(
+    circuit: &mut CircuitBuilder<Val<SC>, D, DIGEST_ELEMS>,
     opened_wires: &OpenedValuesWires<D>,
     opened_values: OpenedValues<SC::Challenge>,
 ) -> Result<(), CircuitError>
@@ -248,8 +259,9 @@ pub fn set_proof_wires<
     Comm: RecursiveVersion,
     InputProof: RecursiveVersion,
     const D: usize,
+    const DIGEST_ELEMS: usize,
 >(
-    circuit: &mut CircuitBuilder<Val<SC>, D>,
+    circuit: &mut CircuitBuilder<Val<SC>, D, DIGEST_ELEMS>,
     proof_wires: &ProofWires<D, Comm, InputProof>,
     proof: Proof<SC>,
 ) -> Result<(), CircuitError>
@@ -275,10 +287,10 @@ where
     } = proof;
 
     // Set commitment wires.
-    set_commitment_wires::<SC, Comm, D>(circuit, commitments_wires, &commitments)?;
+    set_commitment_wires::<SC, Comm, _, _>(circuit, commitments_wires, &commitments)?;
 
     // Set opened values.
-    set_opened_wires::<SC, Comm, D>(circuit, opened_values_wires, opened_values)?;
+    set_opened_wires::<SC, Comm, _, _>(circuit, opened_values_wires, opened_values)?;
 
     let opening_proof_wires = opening_proof_wires.get_wires();
     let opening_proof_values = opening_proof.get_values();
@@ -295,7 +307,7 @@ pub enum CircuitError {
     WireSetTwice,
 }
 
-pub fn symbolic_to_circuit<F: Field, EF, const D: usize>(
+pub fn symbolic_to_circuit<F: Field, EF, const D: usize, const DIGEST_ELEMS: usize>(
     is_first_row: ExtensionWireId<D>,
     is_last_row: ExtensionWireId<D>,
     is_transition: ExtensionWireId<D>,
@@ -306,7 +318,7 @@ pub fn symbolic_to_circuit<F: Field, EF, const D: usize>(
     local_values: &[ExtensionWireId<D>],
     next_values: &[ExtensionWireId<D>],
     symbolic: &SymbolicExpression<EF>,
-    circuit: &mut CircuitBuilder<F, D>,
+    circuit: &mut CircuitBuilder<F, D, DIGEST_ELEMS>,
 ) -> ExtensionWireId<D>
 where
     F: BinomiallyExtendable<D>,
@@ -344,7 +356,7 @@ where
             _ => unimplemented!(),
         },
         SymbolicExpression::Add { x, y, .. } => {
-            let x_wire = symbolic_to_circuit::<F, EF, D>(
+            let x_wire = symbolic_to_circuit(
                 is_first_row.clone(),
                 is_last_row.clone(),
                 is_transition.clone(),
@@ -357,7 +369,7 @@ where
                 x,
                 circuit,
             );
-            let y_wire = symbolic_to_circuit::<F, EF, D>(
+            let y_wire = symbolic_to_circuit(
                 is_first_row,
                 is_last_row,
                 is_transition,
@@ -378,7 +390,7 @@ where
             out_wire
         }
         SymbolicExpression::Mul { x, y, .. } => {
-            let x_wire = symbolic_to_circuit::<F, EF, D>(
+            let x_wire = symbolic_to_circuit(
                 is_first_row.clone(),
                 is_last_row.clone(),
                 is_transition.clone(),
@@ -391,7 +403,7 @@ where
                 x,
                 circuit,
             );
-            let y_wire = symbolic_to_circuit::<F, EF, D>(
+            let y_wire = symbolic_to_circuit(
                 is_first_row,
                 is_last_row,
                 is_transition,
@@ -411,7 +423,7 @@ where
             out_wire
         }
         SymbolicExpression::Sub { x, y, .. } => {
-            let x_wire = symbolic_to_circuit::<F, EF, D>(
+            let x_wire = symbolic_to_circuit(
                 is_first_row.clone(),
                 is_last_row.clone(),
                 is_transition.clone(),
@@ -424,7 +436,7 @@ where
                 x,
                 circuit,
             );
-            let y_wire = symbolic_to_circuit::<F, EF, D>(
+            let y_wire = symbolic_to_circuit(
                 is_first_row,
                 is_last_row,
                 is_transition,
@@ -445,7 +457,7 @@ where
             out_wire
         }
         SymbolicExpression::Neg { x, .. } => {
-            let x_wire = symbolic_to_circuit::<F, EF, D>(
+            let x_wire = symbolic_to_circuit(
                 is_first_row,
                 is_last_row,
                 is_transition,

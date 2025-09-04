@@ -19,12 +19,20 @@ pub trait AirWithTraceGenerationFromEvents<SC: StarkGenericConfig, AB: AirBuilde
     ) -> Result<(), VerificationError<PcsError<SC>>>;
 }
 #[cfg(debug_assertions)]
-pub trait AirWithTraceGenerationFromEvents<SC: StarkGenericConfig, AB: AirBuilder, const D: usize>:
+pub trait AirWithTraceGenerationFromEvents<
+    SC: StarkGenericConfig,
+    AB: AirBuilder,
+    const D: usize,
+    const DIGEST_ELEMS: usize,
+>:
     Air<SymbolicAirBuilder<Val<SC>>>
     + for<'a> Air<ProverConstraintFolder<'a, SC>>
     + for<'a> Air<DebugConstraintBuilder<'a, Val<SC>>>
 {
-    fn generate_trace(&self, all_events: &AllEvents<Val<SC>, D>) -> RowMajorMatrix<Val<SC>>;
+    fn generate_trace(
+        &self,
+        all_events: &AllEvents<Val<SC>, D, DIGEST_ELEMS>,
+    ) -> RowMajorMatrix<Val<SC>>;
     fn prove_chip(&self, config: &SC, trace: RowMajorMatrix<Val<SC>>) -> Proof<SC>;
     fn verify_chip(
         &self,
@@ -37,15 +45,20 @@ pub trait AirWithTraceGenerationFromEvents<SC: StarkGenericConfig, AB: AirBuilde
 macro_rules! impl_air_with_trace_from_events {
     // Arm 1: plain `.iter()` (no projection)
     ($Air:ty, $events_field:ident) => {
-        impl<SC, AB, const D: usize>
-            $crate::prover::tables::AirWithTraceGenerationFromEvents<SC, AB, D> for $Air
+        impl<SC, AB, const D: usize, const DIGEST_ELEMS: usize>
+            $crate::prover::tables::AirWithTraceGenerationFromEvents<SC, AB, D, DIGEST_ELEMS>
+            for $Air
         where
             SC: p3_uni_stark::StarkGenericConfig,
             AB: p3_air::AirBuilder,
         {
             fn generate_trace(
                 &self,
-                all_events: &AllEvents<p3_uni_stark::Val<SC>, D>,
+                all_events: &crate::circuit_builder::gates::event::AllEvents<
+                    p3_uni_stark::Val<SC>,
+                    D,
+                    DIGEST_ELEMS,
+                >,
             ) -> p3_matrix::dense::RowMajorMatrix<p3_uni_stark::Val<SC>> {
                 Self::build_trace(
                     all_events.$events_field.iter(),

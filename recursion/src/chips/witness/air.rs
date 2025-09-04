@@ -43,6 +43,7 @@ pub struct RomAir {}
 pub type WitnessAir = RomAir;
 pub type ConstAir = RomAir;
 
+#[derive(Debug)]
 pub struct RomEvent<F>(pub usize, pub F);
 
 impl RomAir {

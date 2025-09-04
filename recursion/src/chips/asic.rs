@@ -5,14 +5,16 @@ use p3_uni_stark::{PcsError, StarkGenericConfig, Val, VerificationError};
 use crate::prover::RecursiveProof;
 use crate::prover::tables::AirWithTraceGenerationFromEvents;
 
-pub struct Asic<SC: StarkGenericConfig, AB: AirBuilder, const D: usize> {
-    pub chips: Vec<Box<dyn AirWithTraceGenerationFromEvents<SC, AB, D>>>,
+pub struct Asic<SC: StarkGenericConfig, AB: AirBuilder, const D: usize, const DIGEST_ELEMS: usize> {
+    pub chips: Vec<Box<dyn AirWithTraceGenerationFromEvents<SC, AB, D, DIGEST_ELEMS>>>,
 }
 
-impl<SC: StarkGenericConfig, AB: AirBuilder, const D: usize> Asic<SC, AB, D> {
+impl<SC: StarkGenericConfig, AB: AirBuilder, const D: usize, const DIGEST_ELEMS: usize>
+    Asic<SC, AB, D, DIGEST_ELEMS>
+{
     pub fn generate_trace(
         &self,
-        all_events: &crate::circuit_builder::gates::event::AllEvents<Val<SC>, D>,
+        all_events: &crate::circuit_builder::gates::event::AllEvents<Val<SC>, D, DIGEST_ELEMS>,
     ) -> Vec<RowMajorMatrix<Val<SC>>> {
         self.chips
             .iter()

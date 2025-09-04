@@ -5,16 +5,22 @@ use p3_field::Field;
 
 use crate::chips::ext_alu::binomial_extension::BinomialExtension;
 
+#[derive(Debug)]
 pub struct AddEvent<F, const R: usize = 1>(pub FieldOpEvent<usize, F, R>);
+#[derive(Debug)]
 pub struct SubEvent<F, const R: usize = 1>(pub FieldOpEvent<usize, F, R>);
+#[derive(Debug)]
 pub struct MulEvent<F, const R: usize = 1>(pub FieldOpEvent<usize, F, R>);
 
+#[derive(Debug)]
 pub struct ExtAddEvent<F, const D: usize, const R: usize = 1>(
     pub FieldOpEvent<[usize; D], BinomialExtension<F, D>, R>,
 );
+#[derive(Debug)]
 pub struct ExtSubEvent<F, const D: usize, const R: usize = 1>(
     pub FieldOpEvent<[usize; D], BinomialExtension<F, D>, R>,
 );
+#[derive(Debug)]
 pub struct ExtMulEvent<F, const D: usize, const R: usize = 1>(
     pub FieldOpEvent<[usize; D], BinomialExtension<F, D>, R>,
 );
