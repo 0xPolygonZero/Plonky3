@@ -33,8 +33,8 @@ impl<F: Field> AddGate<F> {
         }
     }
 
-    pub fn add_to_circuit<const D: usize>(
-        builder: &mut CircuitBuilder<F, D>,
+    pub fn add_to_circuit<const D: usize, const DIGEST_ELEMS: usize>(
+        builder: &mut CircuitBuilder<F, D, DIGEST_ELEMS>,
         a: WireId,
         b: WireId,
         c: WireId,
@@ -44,7 +44,7 @@ impl<F: Field> AddGate<F> {
     }
 }
 
-impl<F: Field, const D: usize> Gate<F, D> for AddGate<F> {
+impl<F: Field, const D: usize, const DIGEST_ELEMS: usize> Gate<F, D, DIGEST_ELEMS> for AddGate<F> {
     fn n_inputs(&self) -> usize {
         BINOP_N_INPUTS
     }
@@ -55,10 +55,14 @@ impl<F: Field, const D: usize> Gate<F, D> for AddGate<F> {
 
     fn generate(
         &self,
-        builder: &mut CircuitBuilder<F, D>,
-        all_events: &mut AllEvents<F, D>,
+        builder: &mut CircuitBuilder<F, D, DIGEST_ELEMS>,
+        all_events: &mut AllEvents<F, D, DIGEST_ELEMS>,
     ) -> Result<(), CircuitError> {
-        <AddGate<F> as Gate<F, D>>::check_shape(self, self.inputs.len(), self.outputs.len());
+        <Self as Gate<F, D, DIGEST_ELEMS>>::check_shape(
+            self,
+            self.inputs.len(),
+            self.outputs.len(),
+        );
 
         let input1 = builder.get_wire_value(self.inputs[0])?;
         let input2 = builder.get_wire_value(self.inputs[1])?;
@@ -101,8 +105,8 @@ impl<F: Field> SubGate<F> {
         }
     }
 
-    pub fn add_to_circuit<const D: usize>(
-        builder: &mut CircuitBuilder<F, D>,
+    pub fn add_to_circuit<const D: usize, const DIGEST_ELEMS: usize>(
+        builder: &mut CircuitBuilder<F, D, DIGEST_ELEMS>,
         a: WireId,
         b: WireId,
         c: WireId,
@@ -112,7 +116,7 @@ impl<F: Field> SubGate<F> {
     }
 }
 
-impl<F: Field, const D: usize> Gate<F, D> for SubGate<F> {
+impl<F: Field, const D: usize, const DIGEST_ELEMS: usize> Gate<F, D, DIGEST_ELEMS> for SubGate<F> {
     fn n_inputs(&self) -> usize {
         2
     }
@@ -123,10 +127,14 @@ impl<F: Field, const D: usize> Gate<F, D> for SubGate<F> {
 
     fn generate(
         &self,
-        builder: &mut CircuitBuilder<F, D>,
-        all_events: &mut AllEvents<F, D>,
+        builder: &mut CircuitBuilder<F, D, DIGEST_ELEMS>,
+        all_events: &mut AllEvents<F, D, DIGEST_ELEMS>,
     ) -> Result<(), CircuitError> {
-        <SubGate<F> as Gate<F, D>>::check_shape(self, self.inputs.len(), self.outputs.len());
+        <SubGate<F> as Gate<F, D, DIGEST_ELEMS>>::check_shape(
+            self,
+            self.inputs.len(),
+            self.outputs.len(),
+        );
 
         let input1 = builder.get_wire_value(self.inputs[0])?;
         let input2 = builder.get_wire_value(self.inputs[1])?;
@@ -168,8 +176,8 @@ impl<F: Field> MulGate<F> {
         }
     }
 
-    pub fn add_to_circuit<const D: usize>(
-        builder: &mut CircuitBuilder<F, D>,
+    pub fn add_to_circuit<const D: usize, const DIGEST_ELEMS: usize>(
+        builder: &mut CircuitBuilder<F, D, DIGEST_ELEMS>,
         a: WireId,
         b: WireId,
         c: WireId,
@@ -179,7 +187,7 @@ impl<F: Field> MulGate<F> {
     }
 }
 
-impl<F: Field, const D: usize> Gate<F, D> for MulGate<F> {
+impl<F: Field, const D: usize, const DIGEST_ELEMS: usize> Gate<F, D, DIGEST_ELEMS> for MulGate<F> {
     fn n_inputs(&self) -> usize {
         2
     }
@@ -190,10 +198,14 @@ impl<F: Field, const D: usize> Gate<F, D> for MulGate<F> {
 
     fn generate(
         &self,
-        builder: &mut CircuitBuilder<F, D>,
-        all_events: &mut AllEvents<F, D>,
+        builder: &mut CircuitBuilder<F, D, DIGEST_ELEMS>,
+        all_events: &mut AllEvents<F, D, DIGEST_ELEMS>,
     ) -> Result<(), CircuitError> {
-        <MulGate<F> as Gate<F, D>>::check_shape(self, self.inputs.len(), self.outputs.len());
+        <MulGate<F> as Gate<F, D, DIGEST_ELEMS>>::check_shape(
+            self,
+            self.inputs.len(),
+            self.outputs.len(),
+        );
 
         let input1 = builder.get_wire_value(self.inputs[0])?;
         let input2 = builder.get_wire_value(self.inputs[1])?;
@@ -239,8 +251,8 @@ impl<F: Field + BinomiallyExtendable<D>, const D: usize> MulExtensionGate<F, D> 
         }
     }
 
-    pub fn add_to_circuit(
-        builder: &mut CircuitBuilder<F, D>,
+    pub fn add_to_circuit<const DIGEST_ELEMS: usize>(
+        builder: &mut CircuitBuilder<F, D, DIGEST_ELEMS>,
         a: ExtensionWireId<D>,
         b: ExtensionWireId<D>,
         c: ExtensionWireId<D>,
@@ -262,7 +274,9 @@ impl<F: Field + BinomiallyExtendable<D>, const D: usize> MulExtensionGate<F, D> 
     }
 }
 
-impl<F: Field + BinomiallyExtendable<D>, const D: usize> Gate<F, D> for MulExtensionGate<F, D> {
+impl<F: Field + BinomiallyExtendable<D>, const D: usize, const DIGEST_ELEMS: usize>
+    Gate<F, D, DIGEST_ELEMS> for MulExtensionGate<F, D>
+{
     fn n_inputs(&self) -> usize {
         Self::EXTENSION_N_INPUTS
     }
@@ -273,10 +287,14 @@ impl<F: Field + BinomiallyExtendable<D>, const D: usize> Gate<F, D> for MulExten
 
     fn generate(
         &self,
-        builder: &mut CircuitBuilder<F, D>,
-        all_events: &mut AllEvents<F, D>,
+        builder: &mut CircuitBuilder<F, D, DIGEST_ELEMS>,
+        all_events: &mut AllEvents<F, D, DIGEST_ELEMS>,
     ) -> Result<(), CircuitError> {
-        self.check_shape(self.inputs.len(), self.outputs.len());
+        <Self as Gate<F, D, DIGEST_ELEMS>>::check_shape(
+            self,
+            self.inputs.len(),
+            self.outputs.len(),
+        );
 
         let input1_wires = self.get_first_input_wires();
         let input1: [Option<F>; D] = input1_wires
@@ -359,8 +377,8 @@ impl<F: Field + BinomiallyExtendable<D>, const D: usize> SubExtensionGate<F, D> 
         }
     }
 
-    pub fn add_to_circuit(
-        builder: &mut CircuitBuilder<F, D>,
+    pub fn add_to_circuit<const DIGEST_ELEMS: usize>(
+        builder: &mut CircuitBuilder<F, D, DIGEST_ELEMS>,
         a: ExtensionWireId<D>,
         b: ExtensionWireId<D>,
         c: ExtensionWireId<D>,
@@ -382,7 +400,9 @@ impl<F: Field + BinomiallyExtendable<D>, const D: usize> SubExtensionGate<F, D> 
     }
 }
 
-impl<F: Field + BinomiallyExtendable<D>, const D: usize> Gate<F, D> for SubExtensionGate<F, D> {
+impl<F: Field + BinomiallyExtendable<D>, const D: usize, const DIGEST_ELEMS: usize>
+    Gate<F, D, DIGEST_ELEMS> for SubExtensionGate<F, D>
+{
     fn n_inputs(&self) -> usize {
         Self::EXTENSION_N_INPUTS
     }
@@ -393,10 +413,14 @@ impl<F: Field + BinomiallyExtendable<D>, const D: usize> Gate<F, D> for SubExten
 
     fn generate(
         &self,
-        builder: &mut CircuitBuilder<F, D>,
-        all_events: &mut AllEvents<F, D>,
+        builder: &mut CircuitBuilder<F, D, DIGEST_ELEMS>,
+        all_events: &mut AllEvents<F, D, DIGEST_ELEMS>,
     ) -> Result<(), CircuitError> {
-        self.check_shape(self.inputs.len(), self.outputs.len());
+        <Self as Gate<F, D, DIGEST_ELEMS>>::check_shape(
+            self,
+            self.inputs.len(),
+            self.outputs.len(),
+        );
 
         let input1_wires = self.get_first_input_wires();
         let input1: [Option<F>; D] = input1_wires
@@ -461,8 +485,8 @@ impl<F: Field + BinomiallyExtendable<D>, const D: usize> AddExtensionGate<F, D> 
         }
     }
 
-    pub fn add_to_circuit(
-        builder: &mut CircuitBuilder<F, D>,
+    pub fn add_to_circuit<const DIGEST_ELEMS: usize>(
+        builder: &mut CircuitBuilder<F, D, DIGEST_ELEMS>,
         a: ExtensionWireId<D>,
         b: ExtensionWireId<D>,
         c: ExtensionWireId<D>,
@@ -484,7 +508,9 @@ impl<F: Field + BinomiallyExtendable<D>, const D: usize> AddExtensionGate<F, D> 
     }
 }
 
-impl<F: Field + BinomiallyExtendable<D>, const D: usize> Gate<F, D> for AddExtensionGate<F, D> {
+impl<F: Field + BinomiallyExtendable<D>, const D: usize, const DIGEST_ELEMS: usize>
+    Gate<F, D, DIGEST_ELEMS> for AddExtensionGate<F, D>
+{
     fn n_inputs(&self) -> usize {
         Self::EXTENSION_N_INPUTS
     }
@@ -495,10 +521,14 @@ impl<F: Field + BinomiallyExtendable<D>, const D: usize> Gate<F, D> for AddExten
 
     fn generate(
         &self,
-        builder: &mut CircuitBuilder<F, D>,
-        all_events: &mut AllEvents<F, D>,
+        builder: &mut CircuitBuilder<F, D, DIGEST_ELEMS>,
+        all_events: &mut AllEvents<F, D, DIGEST_ELEMS>,
     ) -> Result<(), CircuitError> {
-        self.check_shape(self.inputs.len(), self.outputs.len());
+        <Self as Gate<F, D, DIGEST_ELEMS>>::check_shape(
+            self,
+            self.inputs.len(),
+            self.outputs.len(),
+        );
 
         let input1_wires = self.get_first_input_wires();
         let input1: [Option<F>; D] = input1_wires

@@ -1,32 +1,18 @@
-use itertools::Itertools;
-use itertools::zip_eq;
-use p3_challenger::CanObserve;
-use p3_challenger::FieldChallenger;
-use p3_commit::Pcs;
-use p3_commit::PolynomialSpace;
-use p3_field::BasedVectorSpace;
-use p3_field::ExtensionField;
-use p3_field::Field;
-use p3_field::PrimeCharacteristicRing;
+use itertools::{Itertools, zip_eq};
+use p3_challenger::{CanObserve, FieldChallenger};
+use p3_commit::{Pcs, PolynomialSpace};
 use p3_field::extension::BinomiallyExtendable;
-use p3_uni_stark::Commitments;
-use p3_uni_stark::Domain;
-use p3_uni_stark::Proof;
-use p3_uni_stark::StarkGenericConfig;
-use p3_uni_stark::Val;
+use p3_field::{BasedVectorSpace, ExtensionField, Field, PrimeCharacteristicRing};
+use p3_uni_stark::{Commitments, Domain, Proof, StarkGenericConfig, Val};
 
-use crate::circuit_builder::CircuitError;
-use crate::circuit_builder::ExtensionWireId;
-use crate::circuit_builder::gates::arith_gates::AddExtensionGate;
-use crate::circuit_builder::gates::arith_gates::MulExtensionGate;
-use crate::circuit_builder::gates::arith_gates::SubExtensionGate;
-use crate::circuit_builder::{CircuitBuilder, WireId};
-use crate::verifier::recursive_traits::ForRecursiveVersion;
-use crate::verifier::recursive_traits::PcsGeneration;
-use crate::verifier::recursive_traits::PcsRecursiveVerif;
-use crate::verifier::recursive_traits::RecursiveAir;
-use crate::verifier::recursive_traits::RecursiveStarkGenerationConfig;
-use crate::verifier::recursive_traits::RecursiveVersion;
+use crate::circuit_builder::gates::arith_gates::{
+    AddExtensionGate, MulExtensionGate, SubExtensionGate,
+};
+use crate::circuit_builder::{CircuitBuilder, CircuitError, ExtensionWireId, WireId};
+use crate::verifier::recursive_traits::{
+    ForRecursiveVersion, PcsGeneration, PcsRecursiveVerif, RecursiveAir,
+    RecursiveStarkGenerationConfig, RecursiveVersion,
+};
 
 #[derive(Clone)]
 pub struct CommitmentWires<Comm: RecursiveVersion> {
@@ -49,9 +35,10 @@ pub fn generate_challenges<
     SC: StarkGenericConfig,
     InputProof: ForRecursiveVersion<Val<SC>>,
     const D: usize,
+    const DIGEST_ELEMS: usize
 >(
     config: &SC,
-    circuit: &mut CircuitBuilder<Val<SC>, D>,
+    circuit: &mut CircuitBuilder<Val<SC>, D, DIGEST_ELEMS>,
     proof: &Proof<SC>,
     public_values: &Vec<WireId>,
     challenges: &Vec<ExtensionWireId<D>>,
@@ -180,11 +167,12 @@ pub fn generate_challenges<
 fn get_circuit_challenges<
     SC: RecursiveStarkGenerationConfig<InputProof, OpeningProof, D>,
     const D: usize,
+    const DIGEST_ELEMS: usize,
     InputProof: RecursiveVersion,
     OpeningProof: RecursiveVersion,
 >(
     proof_wires: &ProofWires<D, SC::Comm, OpeningProof>,
-    circuit: &mut CircuitBuilder<SC::Val, D>,
+    circuit: &mut CircuitBuilder<SC::Val, D, DIGEST_ELEMS>,
 ) -> Vec<ExtensionWireId<D>> {
     let mut challenges = vec![];
     // Observe degree bits and degree_bits - is_zk.
@@ -232,7 +220,7 @@ pub fn verify_circuit<
 ) -> Result<(), CircuitError>
 where
     SC::Val: BinomiallyExtendable<D>,
-    A: RecursiveAir<SC::Val, D>,
+    A: RecursiveAir<SC::Val, D, DIGEST_ELEMS>,
     InputProof: Clone,
     <SC as RecursiveStarkGenerationConfig<InputProof, OpeningProof, D>>::Pcs: PcsRecursiveVerif<InputProof, OpeningProof, SC::Comm, SC::Domain, SC::Val, SC::Challenge, D>,
 {
@@ -261,7 +249,7 @@ where
     let pcs = config.pcs();
     let trace_domain = pcs.natural_domain_for_degree(degree);
     let init_trace_domain = pcs.natural_domain_for_degree(degree >> (config.is_zk()));
-    let mut circuit = CircuitBuilder::<SC::Val, D>::new();
+    let mut circuit = CircuitBuilder::new();
 
     let quotient_domain =
         pcs.create_disjoint_domain(trace_domain, 1 << (degree_bits + log_quotient_degree));
@@ -274,8 +262,7 @@ where
 
     // Challenger is called here. But we don't have the interactions or hash tables yet.
     // TODO: We need to simulate it for now.
-    let challenge_wires =
-        get_circuit_challenges::<SC, D, InputProof, OpeningProof>(proof_wires, &mut circuit);
+    let challenge_wires = get_circuit_challenges::<SC, _, _, _, _>(proof_wires, &mut circuit);
 
     // Verify shape.
     let air_width = A::width(air);
@@ -345,26 +332,17 @@ where
                 .enumerate()
                 .filter(|(j, _)| *j != i)
                 .for_each(|(_, other_domain)| {
-                    let v_n = vanishing_poly_at_point_circuit::<
-                        InputProof,
-                        OpeningProof,
-                        SC::Comm,
-                        SC,
-                        SC::Domain,
-                        D,
-                    >(config, *other_domain, zeta, &mut circuit);
+                    let v_n =
+                        vanishing_poly_at_point_circuit(config, *other_domain, zeta, &mut circuit);
 
                     let first_point = circuit
                         .add_extension_constant(SC::Challenge::from(pcs.first_point(domain)));
-                    let other_v_n =
-                        vanishing_poly_at_point_circuit::<
-                            InputProof,
-                            OpeningProof,
-                            SC::Comm,
-                            SC,
-                            SC::Domain,
-                            D,
-                        >(config, *other_domain, first_point, &mut circuit);
+                    let other_v_n = vanishing_poly_at_point_circuit(
+                        config,
+                        *other_domain,
+                        first_point,
+                        &mut circuit,
+                    );
                     let div = circuit.new_extension_wires();
                     MulExtensionGate::<SC::Val, D>::add_to_circuit(
                         &mut circuit,
@@ -441,11 +419,12 @@ fn vanishing_poly_at_point_circuit<
     SC: RecursiveStarkGenerationConfig<InputProof, OpeningProof, D>,
     Domain,
     const D: usize,
+    const DIGEST_ELEMS: usize,
 >(
     config: &SC,
     domain: Domain,
     zeta: ExtensionWireId<D>,
-    circuit: &mut CircuitBuilder<SC::Val, D>,
+    circuit: &mut CircuitBuilder<SC::Val, D, DIGEST_ELEMS>,
 ) -> ExtensionWireId<D>
 where
     SC::Val: BinomiallyExtendable<D>,

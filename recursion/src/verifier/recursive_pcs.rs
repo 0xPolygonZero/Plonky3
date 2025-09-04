@@ -1,25 +1,17 @@
 use p3_challenger::{CanObserve, CanSampleBits, FieldChallenger, GrindingChallenger};
 use p3_commit::{BatchOpening, Mmcs, Pcs, PolynomialSpace};
-use p3_field::{
-    ExtensionField, Field, PrimeCharacteristicRing, TwoAdicField,
-    coset::TwoAdicMultiplicativeCoset, extension::BinomiallyExtendable,
-};
+use p3_field::coset::TwoAdicMultiplicativeCoset;
+use p3_field::extension::BinomiallyExtendable;
+use p3_field::{ExtensionField, Field, PrimeCharacteristicRing, TwoAdicField};
 use p3_fri::{FriProof, TwoAdicFriPcs};
 use p3_uni_stark::{StarkGenericConfig, Val};
 use p3_util::log2_strict_usize;
 
-use crate::{
-    circuit_builder::{
-        CircuitBuilder, ExtensionWireId, WireId,
-        gates::arith_gates::{MulExtensionGate, SubExtensionGate},
-    },
-    verifier::{
-        circuit_verifier::ProofWires,
-        recursive_traits::{
-            ForRecursiveVersion, PcsGeneration, PcsRecursiveVerif, RecursiveLagrangeSels,
-            RecursiveVersion,
-        },
-    },
+use crate::circuit_builder::gates::arith_gates::{MulExtensionGate, SubExtensionGate};
+use crate::circuit_builder::{CircuitBuilder, ExtensionWireId, WireId};
+use crate::verifier::circuit_verifier::ProofWires;
+use crate::verifier::recursive_traits::{
+    ForRecursiveVersion, PcsGeneration, PcsRecursiveVerif, RecursiveLagrangeSels, RecursiveVersion,
 };
 
 // Define all the recursion types necessary for Fri and the TwoAdicFriPcs.
@@ -241,8 +233,8 @@ where
         Vec<BatchOpeningWires<InnerProof<F, InputMmcs>>>,
         WireId,
     >;
-    fn get_challenges_circuit(
-        circuit: &mut CircuitBuilder<F, D>,
+    fn get_challenges_circuit<const DIGEST_ELEMS: usize>(
+        circuit: &mut CircuitBuilder<F, D, DIGEST_ELEMS>,
         proof_wires: &ProofWires<D, InnerCommitment<F, InputMmcs>, OpeningProof<D, F, InputMmcs>>,
     ) -> Vec<ExtensionWireId<D>> {
         let num_challenges = 1
@@ -257,9 +249,9 @@ where
         challenges
     }
 
-    fn verify_circuit(
+    fn verify_circuit<const DIGEST_ELEMS: usize>(
         &self,
-        _circuit: &mut CircuitBuilder<F, D>,
+        _circuit: &mut CircuitBuilder<F, D, DIGEST_ELEMS>,
         _challenges: &[ExtensionWireId<D>],
         _commitments_with_opening_points: &[(
             &InnerCommitment<F, InputMmcs>,
@@ -274,9 +266,9 @@ where
         // Regarding the challenges, we only need interactions with the sponge tables.
     }
 
-    fn selectors_at_point_circuit(
+    fn selectors_at_point_circuit<const DIGEST_ELEMS: usize>(
         &self,
-        circuit: &mut CircuitBuilder<F, D>,
+        circuit: &mut CircuitBuilder<F, D, DIGEST_ELEMS>,
         domain: &TwoAdicMultiplicativeCoset<F>,
         point: &ExtensionWireId<D>,
     ) -> RecursiveLagrangeSels<D> {

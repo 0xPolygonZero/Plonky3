@@ -10,6 +10,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+getset = "0.1.6"
 postcard = { workspace = true, features = ["alloc"] }
 p3-air.workspace = true
 p3-challenger.workspace = true

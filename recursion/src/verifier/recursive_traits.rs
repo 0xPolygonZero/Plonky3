@@ -1,12 +1,11 @@
 use itertools::Itertools;
 use p3_commit::Pcs;
-use p3_field::{ExtensionField, Field, extension::BinomiallyExtendable};
+use p3_field::extension::BinomiallyExtendable;
+use p3_field::{ExtensionField, Field};
 use p3_uni_stark::{StarkGenericConfig, Val};
 
-use crate::{
-    circuit_builder::{CircuitBuilder, CircuitError, ExtensionWireId, WireId},
-    verifier::circuit_verifier::ProofWires,
-};
+use crate::circuit_builder::{CircuitBuilder, CircuitError, ExtensionWireId, WireId};
+use crate::verifier::circuit_verifier::ProofWires;
 
 /// Trait for the recursive commitments. It is used to extract the wires.
 pub trait RecursiveVersion {
@@ -20,9 +19,9 @@ pub trait ForRecursiveVersion<F: Field> {
     /// Returns a vec of field elements representing one commitment.
     fn get_values(&self) -> Vec<F>;
 
-    fn set_wires<SC: StarkGenericConfig, const D: usize>(
+    fn set_wires<SC: StarkGenericConfig, const D: usize, const DIGEST_ELEMS: usize>(
         &self,
-        circuit: &mut CircuitBuilder<F, D>,
+        circuit: &mut CircuitBuilder<F, D, DIGEST_ELEMS>,
         recursive_version: Self::RecVerif,
     ) -> Result<(), CircuitError> {
         let values = self.get_values();
@@ -89,15 +88,15 @@ pub trait PcsRecursiveVerif<
     type RecursiveProof;
 
     /// Creates new wires for all the challenges necessary when computing the Pcs.
-    fn get_challenges_circuit(
-        circuit: &mut CircuitBuilder<F, D>,
+    fn get_challenges_circuit<const DIGEST_ELEMS: usize>(
+        circuit: &mut CircuitBuilder<F, D, DIGEST_ELEMS>,
         proof_wires: &ProofWires<D, Comm, OpeningProof>,
     ) -> Vec<ExtensionWireId<D>>;
 
     /// Adds the circuit which verifies the Pcs computation.
-    fn verify_circuit(
+    fn verify_circuit<const DIGEST_ELEMS: usize>(
         &self,
-        circuit: &mut CircuitBuilder<F, D>,
+        circuit: &mut CircuitBuilder<F, D, DIGEST_ELEMS>,
         challenges: &[ExtensionWireId<D>],
         commitments_with_opening_points: &[(
             &Comm,
@@ -107,9 +106,9 @@ pub trait PcsRecursiveVerif<
     );
 
     /// Computes wire selectors at `point` in the circuit.
-    fn selectors_at_point_circuit(
+    fn selectors_at_point_circuit<const DIGEST_ELEMS: usize>(
         &self,
-        circuit: &mut CircuitBuilder<F, D>,
+        circuit: &mut CircuitBuilder<F, D, DIGEST_ELEMS>,
         domain: &Domain,
         point: &ExtensionWireId<D>,
     ) -> RecursiveLagrangeSels<D>;
@@ -140,12 +139,12 @@ pub struct RecursiveLagrangeSels<const D: usize> {
 
 /// Trait including methods necessary to compute the verification of an AIR's constraints,
 /// as well as AIR-specific methods used in the full verification circuit.
-pub trait RecursiveAir<F: Field, const D: usize> {
+pub trait RecursiveAir<F: Field, const D: usize, const DIGEST_ELEMS: usize> {
     fn width(&self) -> usize;
 
     fn eval_folded_circuit<EF: ExtensionField<F>>(
         &self,
-        builder: &mut CircuitBuilder<F, D>,
+        builder: &mut CircuitBuilder<F, D, DIGEST_ELEMS>,
         sels: &RecursiveLagrangeSels<D>,
         alpha: &ExtensionWireId<D>,
         local_prep_values: &[ExtensionWireId<D>],

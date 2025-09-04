@@ -34,7 +34,6 @@ pub trait GenerateExtAluTrace<const D: usize, const R: usize> {
         assert_eq!(rows.len(), events_len);
 
         for event in events {
-            println!("event = {:?}", *event);
             for i in 0..R {
                 let row = &mut rows[i];
                 row.left_addr[i] = event.left_addr[i].map(F::from_usize);
@@ -164,10 +163,10 @@ macro_rules! ext_operation_air {
             AB: p3_air::AirBuilder,
         {}
 
-        impl<SC: p3_uni_stark::StarkGenericConfig, AB: AirBuilder, const D: usize, const R: usize> $crate::prover::tables::AirWithTraceGenerationFromEvents<SC, AB, D>
+        impl<SC: p3_uni_stark::StarkGenericConfig, AB: AirBuilder, const D: usize, const R: usize, const DIGEST_ELEMS: usize> $crate::prover::tables::AirWithTraceGenerationFromEvents<SC, AB, D, DIGEST_ELEMS>
         for $OpAir<D, R>
         {
-            fn generate_trace(&self, all_events: &$crate::circuit_builder::gates::event::AllEvents<p3_uni_stark::Val<SC>, D>) -> RowMajorMatrix<p3_uni_stark::Val<SC>> {
+            fn generate_trace(&self, all_events: &$crate::circuit_builder::gates::event::AllEvents<p3_uni_stark::Val<SC>, D, DIGEST_ELEMS>) -> RowMajorMatrix<p3_uni_stark::Val<SC>> {
                 <Self as crate::chips::ext_alu::air::GenerateExtAluTrace<D, R>>::build_trace(
                     all_events.$events.iter().map(|x| &x.0),
                     all_events.$events.len(),

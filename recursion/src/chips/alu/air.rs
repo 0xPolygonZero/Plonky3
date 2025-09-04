@@ -38,7 +38,6 @@ pub trait GenerateAluTrace<const R: usize> {
         assert_eq!(rows.len(), events_len);
 
         for event in events {
-            println!("event = {:?}", *event);
             for i in 0..R {
                 let row = &mut rows[i];
                 row.left_addr[i] = F::from_usize(event.left_addr[i]);
@@ -166,10 +165,10 @@ macro_rules! operation_air {
             AB: p3_air::AirBuilder,
         {}
 
-        impl<SC: p3_uni_stark::StarkGenericConfig, AB: AirBuilder, const D: usize, const R: usize> $crate::prover::tables::AirWithTraceGenerationFromEvents<SC, AB, D>
+        impl<SC: p3_uni_stark::StarkGenericConfig, AB: AirBuilder, const D: usize, const R: usize, const DIGEST_ELEMS: usize> $crate::prover::tables::AirWithTraceGenerationFromEvents<SC, AB, D, DIGEST_ELEMS>
         for $OpAir<R>
         {
-            fn generate_trace(&self, all_events: &AllEvents<Val<SC>, D>) -> RowMajorMatrix<p3_uni_stark::Val<SC>> {
+            fn generate_trace(&self, all_events: &AllEvents<Val<SC>, D, DIGEST_ELEMS>) -> RowMajorMatrix<p3_uni_stark::Val<SC>> {
                 <Self as GenerateAluTrace<R>>::build_trace(
                     all_events.$events.iter().map(|x| &x.0),
                     all_events.$events.len(),

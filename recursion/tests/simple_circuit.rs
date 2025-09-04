@@ -32,7 +32,7 @@ type B = DebugConstraintBuilder<'static, Val<SC>>;
 
 pub struct BasicProver {}
 
-impl<const D: usize> ProofSystem<D> for BasicProver {
+impl<const D: usize, const DIGEST_ELEMS: usize> ProofSystem<D, DIGEST_ELEMS> for BasicProver {
     type Config = SC;
     type Builder = B;
     type Proof = RecursiveProof<SC>;
@@ -40,8 +40,8 @@ impl<const D: usize> ProofSystem<D> for BasicProver {
 
     fn prove<'a>(
         config: &Self::Config,
-        asic: &Asic<Self::Config, Self::Builder, D>,
-        all_events: &AllEvents<Val<Self::Config>, D>,
+        asic: &Asic<Self::Config, Self::Builder, D, DIGEST_ELEMS>,
+        all_events: &AllEvents<Val<Self::Config>, D, DIGEST_ELEMS>,
     ) -> Result<Self::Proof, Self::Error> {
         let traces = asic.generate_trace(&all_events);
 
@@ -50,7 +50,7 @@ impl<const D: usize> ProofSystem<D> for BasicProver {
 
     fn verify<'a>(
         config: &Self::Config,
-        asic: &Asic<Self::Config, Self::Builder, D>,
+        asic: &Asic<Self::Config, Self::Builder, D, DIGEST_ELEMS>,
         proof: &Self::Proof,
     ) -> Result<(), Self::Error> {
         asic.verify_chips(config, proof)
@@ -79,10 +79,10 @@ pub fn test_simple_circuit() -> Result<(), CircuitError> {
     let d = builder.new_wire();
     let e = builder.new_wire();
 
-    AddGate::add_to_circuit::<D>(&mut builder, a, b, c);
-    SubGate::add_to_circuit::<D>(&mut builder, c, d, e);
+    AddGate::add_to_circuit(&mut builder, a, b, c);
+    SubGate::add_to_circuit(&mut builder, c, d, e);
 
-    let asic: Asic<MyConfig, DebugConstraintBuilder<Value>, D> = Asic {
+    let asic: Asic<MyConfig, DebugConstraintBuilder<Value>, D, 4> = Asic {
         chips: vec![
             Box::new(AddAir::<1>::new()),
             Box::new(SubAir::<1>::new()),
@@ -94,11 +94,7 @@ pub fn test_simple_circuit() -> Result<(), CircuitError> {
     builder.set_wire_value(b, Value::new(5))?;
     builder.set_wire_value(d, Value::new(2))?;
 
-    println!("builder wires: {:?}", builder.wires());
-
     let all_events = builder.generate()?;
-
-    println!("builder wires: {:?}", builder.wires());
 
     let proof = prove(&config, &asic, &all_events);
 

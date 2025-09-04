@@ -7,22 +7,25 @@ use p3_baby_bear::BabyBear;
 use p3_challenger::{HashChallenger, SerializingChallenger32};
 use p3_commit::ExtensionMmcs;
 use p3_dft::Radix2DitParallel;
-use p3_field::extension::BinomiallyExtendable;
-use p3_field::{BasedVectorSpace, ExtensionField, Field, PrimeCharacteristicRing};
-use p3_field::{PrimeField64, extension::BinomialExtensionField};
+use p3_field::extension::{BinomialExtensionField, BinomiallyExtendable};
+use p3_field::{BasedVectorSpace, ExtensionField, Field, PrimeCharacteristicRing, PrimeField64};
 use p3_fri::{HidingFriPcs, create_test_fri_params};
 use p3_keccak::{Keccak256Hash, KeccakF};
-use p3_matrix::{Matrix, dense::RowMajorMatrix};
+use p3_matrix::Matrix;
+use p3_matrix::dense::RowMajorMatrix;
 use p3_merkle_tree::MerkleTreeHidingMmcs;
 use p3_recursion::circuit_builder::gates::arith_gates::{AddExtensionGate, MulExtensionGate};
 use p3_recursion::circuit_builder::{CircuitBuilder, ExtensionWireId, WireId, symbolic_to_circuit};
 use p3_recursion::verifier::recursive_traits::RecursiveAir;
-use p3_symmetric::{CompressionFunctionFromHasher, PaddingFreeSponge, SerializingHasher};
+use p3_symmetric::{
+    CompressionFunctionFromHasher, FieldCompression, PaddingFreeSponge, SerializingHasher,
+};
 use p3_uni_stark::{
     StarkConfig, SymbolicExpression, get_log_quotient_degree, get_symbolic_constraints, prove,
     verify, verify_with_return_values,
 };
-use rand::{SeedableRng, rngs::SmallRng};
+use rand::SeedableRng;
+use rand::rngs::SmallRng;
 
 /// For testing the public values feature
 pub struct FibonacciAir {}
@@ -87,14 +90,16 @@ pub fn generate_trace_rows<F: PrimeField64>(a: u64, b: u64, n: usize) -> RowMajo
     trace
 }
 
-impl<F: Field + BinomiallyExtendable<D>, const D: usize> RecursiveAir<F, D> for FibonacciAir {
+impl<F: Field + BinomiallyExtendable<D>, const D: usize, const DIGEST_ELEMS: usize>
+    RecursiveAir<F, D, DIGEST_ELEMS> for FibonacciAir
+{
     fn width(&self) -> usize {
         <Self as BaseAir<F>>::width(self)
     }
 
     fn eval_folded_circuit<EF: ExtensionField<F>>(
         &self,
-        builder: &mut CircuitBuilder<F, D>,
+        builder: &mut CircuitBuilder<F, D, DIGEST_ELEMS>,
         sels: &p3_recursion::verifier::recursive_traits::RecursiveLagrangeSels<D>,
         alpha: &p3_recursion::circuit_builder::ExtensionWireId<D>,
         local_prep_values: &[ExtensionWireId<D>],
@@ -240,7 +245,7 @@ fn test_symbolic_to_circuit() {
         acc
     };
 
-    let mut circuit = CircuitBuilder::<Val, D>::new();
+    let mut circuit = CircuitBuilder::<Val, D, 4>::new();
     let circuit_sels = [
         circuit.new_extension_wires(),
         circuit.new_extension_wires(),
@@ -255,7 +260,8 @@ fn test_symbolic_to_circuit() {
     }
 
     // let pis_extension = pis.iter().map(|&x| Challenge::from(x)).collect::<Vec<_>>();
-    let sum = symbolic_to_circuit::<Val, Challenge, D>(
+    
+    let sum = symbolic_to_circuit(
         circuit_sels[0].clone(),
         circuit_sels[1].clone(),
         circuit_sels[2].clone(),
