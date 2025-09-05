@@ -3,24 +3,28 @@ use std::borrow::Borrow;
 
 use itertools::Itertools;
 use p3_air::{Air, AirBuilder, AirBuilderWithPublicValues, BaseAir};
-use p3_baby_bear::BabyBear;
-use p3_challenger::{HashChallenger, SerializingChallenger32};
+use p3_baby_bear::{BabyBear, Poseidon2BabyBear};
+use p3_challenger::{DuplexChallenger, HashChallenger, SerializingChallenger32};
 use p3_commit::ExtensionMmcs;
 use p3_dft::Radix2DitParallel;
 use p3_field::extension::BinomiallyExtendable;
 use p3_field::{BasedVectorSpace, ExtensionField, Field, PrimeCharacteristicRing};
 use p3_field::{PrimeField64, extension::BinomialExtensionField};
-use p3_fri::{HidingFriPcs, create_test_fri_params};
+use p3_fri::{HidingFriPcs, TwoAdicFriPcs, create_test_fri_params};
 use p3_keccak::{Keccak256Hash, KeccakF};
 use p3_matrix::{Matrix, dense::RowMajorMatrix};
-use p3_merkle_tree::MerkleTreeHidingMmcs;
+use p3_merkle_tree::{MerkleTreeHidingMmcs, MerkleTreeMmcs};
 use p3_recursion::circuit_builder::gates::arith_gates::{AddExtensionGate, MulExtensionGate};
 use p3_recursion::circuit_builder::{CircuitBuilder, ExtensionWireId, WireId, symbolic_to_circuit};
+use p3_recursion::verifier::circuit_verifier::ProofWires;
+use p3_recursion::verifier::recursive_pcs::get_lens;
 use p3_recursion::verifier::recursive_traits::RecursiveAir;
-use p3_symmetric::{CompressionFunctionFromHasher, PaddingFreeSponge, SerializingHasher};
+use p3_symmetric::{
+    CompressionFunctionFromHasher, PaddingFreeSponge, SerializingHasher, TruncatedPermutation,
+};
 use p3_uni_stark::{
-    StarkConfig, SymbolicExpression, get_log_quotient_degree, get_symbolic_constraints, prove,
-    verify, verify_with_return_values,
+    Proof, StarkConfig, SymbolicExpression, get_log_quotient_degree, get_symbolic_constraints,
+    prove, verify, verify_with_return_values,
 };
 use rand::{SeedableRng, rngs::SmallRng};
 
@@ -175,6 +179,15 @@ type Val = BabyBear;
 const D: usize = 4;
 type Challenge = BinomialExtensionField<Val, D>;
 type Dft = Radix2DitParallel<Val>;
+type Perm = Poseidon2BabyBear<16>;
+type MyHash = PaddingFreeSponge<Perm, 16, 8, 8>;
+type MyCompress = TruncatedPermutation<Perm, 2, 8, 16>;
+type ValMmcs =
+    MerkleTreeMmcs<<Val as Field>::Packing, <Val as Field>::Packing, MyHash, MyCompress, 8>;
+type ChallengeMmcs = ExtensionMmcs<Val, Challenge, ValMmcs>;
+type Challenger = DuplexChallenger<Val, Perm, 16, 8>;
+type Pcs = TwoAdicFriPcs<Val, Dft, ValMmcs, ChallengeMmcs>;
+type MyConfig = StarkConfig<Pcs, Challenge, Challenger>;
 
 #[test]
 fn test_symbolic_to_circuit() {
@@ -331,4 +344,35 @@ fn test_symbolic_to_circuit() {
 }
 
 #[test]
-fn test_fibonacci_verifier() {}
+fn test_fibonacci_verifier() {
+    let mut rng = SmallRng::seed_from_u64(1);
+    let perm = Perm::new_from_rng_128(&mut rng);
+    let hash = MyHash::new(perm.clone());
+    let compress = MyCompress::new(perm.clone());
+    let val_mmcs = ValMmcs::new(hash, compress);
+    let challenge_mmcs = ChallengeMmcs::new(val_mmcs.clone());
+    let dft = Dft::default();
+    let trace = generate_trace_rows::<Val>(0, 1, 5);
+    let fri_params = create_test_fri_params(challenge_mmcs, 1);
+    let pcs = Pcs::new(dft, val_mmcs, fri_params);
+    let challenger = Challenger::new(perm);
+
+    let config = MyConfig::new(pcs, challenger);
+    let pis = vec![BabyBear::ZERO, BabyBear::ONE, BabyBear::from_u64(1)];
+
+    let proof = prove(&config, &FibonacciAir {}, trace, &pis);
+
+    let Proof {
+        commitments,
+        opened_values,
+        opening_proof,
+        degree_bits: _,
+    } = proof;
+
+    // No lens for the commitments: it is only hashes.
+    let mut all_lens = vec![];
+
+    let fri_proof_lens = get_lens::<MyConfig, ValMmcs, ChallengeMmcs>(&opening_proof);
+
+    // verify(&config, &FibonacciAir {}, &proof, &pis).expect("verification failed");
+}

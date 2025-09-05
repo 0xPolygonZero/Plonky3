@@ -13,8 +13,6 @@ use crate::circuit_builder::gates::arith_gates::{
 };
 use crate::circuit_builder::gates::event::AllEvents;
 use crate::circuit_builder::gates::gate::Gate;
-use crate::verifier::circuit_verifier::{CommitmentWires, OpenedValuesWires, ProofWires};
-use crate::verifier::recursive_traits::{ForRecursiveVersion, RecursiveVersion};
 
 pub type WireId = usize;
 
@@ -145,136 +143,138 @@ impl<F: Field, const D: usize> CircuitBuilder<F, D> {
     }
 }
 
-/// Function which, given `CommitmentWires` and `Commitments`, sets the wires to the associated values.
-pub fn set_commitment_wires<SC: StarkGenericConfig, Comm: RecursiveVersion, const D: usize>(
-    circuit: &mut CircuitBuilder<Val<SC>, D>,
-    comm_wires: &CommitmentWires<Comm>,
-    comm: &Commitments<<SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Commitment>,
-) -> Result<(), CircuitError>
-where
-    <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Commitment: ForRecursiveVersion<Val<SC>>,
-{
-    let CommitmentWires {
-        trace_wires: trace_wires_comm,
-        quotient_chunks_wires: quotient_chunks_wires_comm,
-        random_commit,
-    } = comm_wires;
+// /// Function which, given `CommitmentWires` and `Commitments`, sets the wires to the associated values.
+// pub fn set_commitment_wires<SC: StarkGenericConfig, Comm: RecursiveVersion, const D: usize>(
+//     circuit: &mut CircuitBuilder<Val<SC>, D>,
+//     comm_wires: &CommitmentWires<Comm>,
+//     comm: &Commitments<<SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Commitment>,
+// ) -> Result<(), CircuitError>
+// where
+//     <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Commitment: ForRecursiveVersion<Val<SC>>,
+// {
+//     let CommitmentWires {
+//         trace_wires: trace_wires_comm,
+//         quotient_chunks_wires: quotient_chunks_wires_comm,
+//         random_commit,
+//         ..
+//     } = comm_wires;
 
-    circuit.set_wire_values(&trace_wires_comm.get_wires(), &comm.trace.get_values())?;
-    circuit.set_wire_values(
-        &quotient_chunks_wires_comm.get_wires(),
-        &comm.quotient_chunks.get_values(),
-    )?;
-    if let Some(r_commit) = random_commit {
-        circuit.set_wire_values(
-            &r_commit.get_wires(),
-            &comm
-                .random
-                .as_ref()
-                .ok_or(CircuitError::RandomizationError)?
-                .get_values(),
-        )?;
-    }
-    Ok(())
-}
+//     circuit.set_wire_values(&trace_wires_comm.get_wires(), &comm.trace.get_values())?;
+//     circuit.set_wire_values(
+//         &quotient_chunks_wires_comm.get_wires(),
+//         &comm.quotient_chunks.get_values(),
+//     )?;
+//     if let Some(r_commit) = random_commit {
+//         circuit.set_wire_values(
+//             &r_commit.get_wires(),
+//             &comm
+//                 .random
+//                 .as_ref()
+//                 .ok_or(CircuitError::RandomizationError)?
+//                 .get_values(),
+//         )?;
+//     }
+//     Ok(())
+// }
 
 /// Function which, given `OpenedValuesWires` and `OpenedValues`, sets the wires to the aassociated values.
-pub fn set_opened_wires<SC: StarkGenericConfig, Comm: RecursiveVersion, const D: usize>(
-    circuit: &mut CircuitBuilder<Val<SC>, D>,
-    opened_wires: &OpenedValuesWires<D>,
-    opened_values: OpenedValues<SC::Challenge>,
-) -> Result<(), CircuitError>
-where
-    <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Commitment: ForRecursiveVersion<Val<SC>>,
-{
-    let OpenedValuesWires {
-        trace_local_wires,
-        trace_next_wires,
-        quotient_chunks_wires,
-        random,
-    } = opened_wires;
+// pub fn set_opened_wires<SC: StarkGenericConfig, Comm: RecursiveVersion, const D: usize>(
+//     circuit: &mut CircuitBuilder<Val<SC>, D>,
+//     opened_wires: &OpenedValuesWires<D>,
+//     opened_values: OpenedValues<SC::Challenge>,
+// ) -> Result<(), CircuitError>
+// where
+//     <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Commitment: ForRecursiveVersion<Val<SC>>,
+// {
+//     let OpenedValuesWires {
+//         trace_local_wires,
+//         trace_next_wires,
+//         quotient_chunks_wires,
+//         random,
+//     } = opened_wires;
 
-    let trace_local_ext = opened_values
-        .trace_local
-        .iter()
-        .map(|l| l.as_basis_coefficients_slice().try_into().unwrap())
-        .collect::<Vec<_>>();
-    circuit.set_extension_wires_slice(trace_local_wires, &trace_local_ext)?;
-    let trace_next_ext = opened_values
-        .trace_next
-        .iter()
-        .map(|l| l.as_basis_coefficients_slice().try_into().unwrap())
-        .collect::<Vec<_>>();
-    circuit.set_extension_wires_slice(trace_next_wires, &trace_next_ext)?;
-    for (chunk_wires, chunk) in quotient_chunks_wires
-        .iter()
-        .zip_eq(opened_values.quotient_chunks.iter())
-    {
-        let chunk_ext = chunk
-            .iter()
-            .map(|l| l.as_basis_coefficients_slice().try_into().unwrap())
-            .collect::<Vec<_>>();
-        circuit.set_extension_wires_slice(chunk_wires, &chunk_ext)?;
-    }
+//     let trace_local_ext = opened_values
+//         .trace_local
+//         .iter()
+//         .map(|l| l.as_basis_coefficients_slice().try_into().unwrap())
+//         .collect::<Vec<_>>();
+//     circuit.set_extension_wires_slice(trace_local_wires, &trace_local_ext)?;
+//     let trace_next_ext = opened_values
+//         .trace_next
+//         .iter()
+//         .map(|l| l.as_basis_coefficients_slice().try_into().unwrap())
+//         .collect::<Vec<_>>();
+//     circuit.set_extension_wires_slice(trace_next_wires, &trace_next_ext)?;
+//     for (chunk_wires, chunk) in quotient_chunks_wires
+//         .iter()
+//         .zip_eq(opened_values.quotient_chunks.iter())
+//     {
+//         let chunk_ext = chunk
+//             .iter()
+//             .map(|l| l.as_basis_coefficients_slice().try_into().unwrap())
+//             .collect::<Vec<_>>();
+//         circuit.set_extension_wires_slice(chunk_wires, &chunk_ext)?;
+//     }
 
-    if let Some(r) = opened_values.random {
-        let r_ext = r
-            .iter()
-            .map(|l| l.as_basis_coefficients_slice().try_into().unwrap())
-            .collect::<Vec<_>>();
-        let random_wires = random.as_ref().ok_or(CircuitError::RandomizationError)?;
-        circuit.set_extension_wires_slice(random_wires, &r_ext)?;
-    }
-    Ok(())
-}
+//     if let Some(r) = opened_values.random {
+//         let r_ext = r
+//             .iter()
+//             .map(|l| l.as_basis_coefficients_slice().try_into().unwrap())
+//             .collect::<Vec<_>>();
+//         let random_wires = random.as_ref().ok_or(CircuitError::RandomizationError)?;
+//         circuit.set_extension_wires_slice(random_wires, &r_ext)?;
+//     }
+//     Ok(())
+// }
 
 /// Given a proof and proof wires, this function sets the proof wires with the corresponding values.
-pub fn set_proof_wires<
-    SC: StarkGenericConfig,
-    Comm: RecursiveVersion,
-    InputProof: RecursiveVersion,
-    const D: usize,
->(
-    circuit: &mut CircuitBuilder<Val<SC>, D>,
-    proof_wires: &ProofWires<D, Comm, InputProof>,
-    proof: Proof<SC>,
-) -> Result<(), CircuitError>
-where
-    <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Commitment: ForRecursiveVersion<Val<SC>>,
-    <<SC as StarkGenericConfig>::Pcs as Pcs<
-        <SC as StarkGenericConfig>::Challenge,
-        <SC as StarkGenericConfig>::Challenger,
-    >>::Proof: ForRecursiveVersion<Val<SC>>,
-{
-    let ProofWires {
-        commitments_wires,
-        opened_values_wires,
-        opening_proof: opening_proof_wires,
-        ..
-    } = proof_wires;
+// pub fn set_proof_wires<
+//     SC: StarkGenericConfig,
+//     Comm: RecursiveVersion,
+//     InputProof: RecursiveVersion,
+//     const D: usize,
+// >(
+//     circuit: &mut CircuitBuilder<Val<SC>, D>,
+//     proof_wires: &ProofWires<Val<SC>, D, Comm, InputProof>,
+//     proof: Proof<SC>,
+// ) -> Result<(), CircuitError>
+// where
+//     <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Commitment: ForRecursiveVersion<Val<SC>>,
+//     <<SC as StarkGenericConfig>::Pcs as Pcs<
+//         <SC as StarkGenericConfig>::Challenge,
+//         <SC as StarkGenericConfig>::Challenger,
+//     >>::Proof: ForRecursiveVersion<Val<SC>>,
+// {
+//     let ProofWires {
+//         commitments_wires,
+//         opened_values_wires,
+//         opening_proof: opening_proof_wires,
+//         ..
+//     } = proof_wires;
 
-    let Proof {
-        commitments,
-        opened_values,
-        opening_proof,
-        degree_bits: _,
-    } = proof;
+//     let Proof {
+//         commitments,
+//         opened_values,
+//         opening_proof,
+//         degree_bits: _,
+//     } = proof;
 
-    // Set commitment wires.
-    set_commitment_wires::<SC, Comm, D>(circuit, commitments_wires, &commitments)?;
+//     // Set commitment wires.
+//     // set_commitment_wires::<SC, Comm, D>(circuit, commitments_wires, &commitments)?;
 
-    // Set opened values.
-    set_opened_wires::<SC, Comm, D>(circuit, opened_values_wires, opened_values)?;
+//     // Set opened values.
+//     set_opened_wires::<SC, Comm, D>(circuit, opened_values_wires, opened_values)?;
 
-    let opening_proof_wires = opening_proof_wires.get_wires();
-    let opening_proof_values = opening_proof.get_values();
-    circuit.set_wire_values(&opening_proof_wires, &opening_proof_values)?;
-    Ok(())
-}
+//     let opening_proof_wires = opening_proof_wires.get_wires();
+//     let opening_proof_values = opening_proof.get_values();
+//     circuit.set_wire_values(&opening_proof_wires, &opening_proof_values)?;
+//     Ok(())
+// }
 
 #[derive(Debug)]
 pub enum CircuitError {
     RandomizationError,
+    DegreeBitsMismatch,
     InvalidProofShape,
     InvalidWireId,
     InputNotSet,
