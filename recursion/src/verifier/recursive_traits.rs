@@ -11,14 +11,14 @@ use crate::circuit_builder::{CircuitBuilder, CircuitError, ExtensionWireId, Wire
 #[derive(Clone)]
 pub struct ProofWires<
     SC: StarkGenericConfig,
-    const D: usize,
     Comm: Recursive<Val<SC>, D>,
     OpeningProof: Recursive<Val<SC>, D>,
+    const D: usize,
 > {
     pub commitments_wires: CommitmentWires<Val<SC>, Comm, D>,
     pub opened_values_wires: OpenedValuesWires<SC, D>,
     pub opening_proof: OpeningProof,
-    degree_bits: usize,
+    pub degree_bits: usize,
 }
 
 #[derive(Clone)]
@@ -84,7 +84,7 @@ pub trait RecursiveStarkGenericConfig<
 {
     type Domain: Copy;
     type Comm: Recursive<Val<SC>, D>;
-    type Pcs: PcsRecursiveVerif<InputProof, OpeningProof, Self::Comm, Self::Domain, SC, D>;
+    type Pcs: RecursivePcs<SC, InputProof, OpeningProof, Self::Comm, Self::Domain, D>;
 
     fn pcs(&self) -> Self::Pcs;
 
@@ -115,12 +115,12 @@ pub trait RecursiveMmcs<F: Field, const D: usize> {
 
 /// Traits including the methods necessary for the recursive version of Pcs.
 /// Prepend Recursive
-pub trait PcsRecursiveVerif<
+pub trait RecursivePcs<
+    SC: StarkGenericConfig,
     InputProof: Recursive<Val<SC>, D>,
     OpeningProof: Recursive<Val<SC>, D>,
     Comm: Recursive<Val<SC>, D>,
     Domain,
-    SC: StarkGenericConfig,
     const D: usize,
 >
 {
@@ -129,7 +129,7 @@ pub trait PcsRecursiveVerif<
     /// Creates new wires for all the challenges necessary when computing the Pcs.
     fn get_challenges_circuit(
         circuit: &mut CircuitBuilder<Val<SC>, D>,
-        proof_wires: &ProofWires<SC, D, Comm, OpeningProof>,
+        proof_wires: &ProofWires<SC, Comm, OpeningProof, D>,
     ) -> Vec<ExtensionWireId<D>>;
 
     /// Adds the circuit which verifies the Pcs computation.
@@ -152,8 +152,8 @@ pub trait PcsRecursiveVerif<
         point: &ExtensionWireId<D>,
     ) -> RecursiveLagrangeSels<D>;
 
-    /// Computes a domain given the degree. This is the same as the original method in Pcs, but is also used in the verifier circuit.
-    fn natural_domain_for_degree(&self, degree: usize) -> Domain;
+    // /// Computes a domain given the degree. This is the same as the original method in Pcs, but is also used in the verifier circuit.
+    // fn natural_domain_for_degree(&self, degree: usize) -> Domain;
 
     /// Computes a disjoint domain given the degree and the current domain. This is the same as the original method in Pcs, but is also used in the verifier circuit.
     fn create_disjoint_domain(&self, trace_domain: Domain, degree: usize) -> Domain;
@@ -206,7 +206,7 @@ impl<
     const D: usize,
     Comm: Recursive<Val<SC>, D, Input = <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Commitment>,
     OpeningProof: Recursive<Val<SC>, D, Input = <SC::Pcs as Pcs<SC::Challenge, SC::Challenger>>::Proof>,
-> Recursive<Val<SC>, D> for ProofWires<SC, D, Comm, OpeningProof>
+> Recursive<Val<SC>, D> for ProofWires<SC, Comm, OpeningProof, D>
 {
     type Input = Proof<SC>;
 

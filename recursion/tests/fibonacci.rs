@@ -16,8 +16,6 @@ use p3_matrix::{Matrix, dense::RowMajorMatrix};
 use p3_merkle_tree::{MerkleTreeHidingMmcs, MerkleTreeMmcs};
 use p3_recursion::circuit_builder::gates::arith_gates::{AddExtensionGate, MulExtensionGate};
 use p3_recursion::circuit_builder::{CircuitBuilder, ExtensionWireId, WireId, symbolic_to_circuit};
-use p3_recursion::verifier::circuit_verifier::ProofWires;
-use p3_recursion::verifier::recursive_pcs::get_lens;
 use p3_recursion::verifier::recursive_traits::RecursiveAir;
 use p3_symmetric::{
     CompressionFunctionFromHasher, PaddingFreeSponge, SerializingHasher, TruncatedPermutation,
@@ -370,9 +368,9 @@ fn test_fibonacci_verifier() {
     } = proof;
 
     // No lens for the commitments: it is only hashes.
-    let mut all_lens = vec![];
+    // let mut all_lens = vec![];
 
-    let fri_proof_lens = get_lens::<MyConfig, ValMmcs, ChallengeMmcs>(&opening_proof);
+    // let fri_proof_lens = get_lens::<MyConfig, ValMmcs, ChallengeMmcs>(&opening_proof);
 
     // verify(&config, &FibonacciAir {}, &proof, &pis).expect("verification failed");
 }

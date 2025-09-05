@@ -5,9 +5,7 @@ use crate::{
         CircuitBuilder, ExtensionWireId, WireId,
         gates::arith_gates::{MulExtensionGate, SubExtensionGate},
     },
-    verifier::recursive_traits::{
-        PcsGeneration, PcsRecursiveVerif, Recursive, RecursiveLagrangeSels, RecursiveMmcs,
-    },
+    verifier::recursive_traits::{PcsGeneration, Recursive, RecursiveLagrangeSels, RecursiveMmcs},
 };
 use p3_challenger::{CanObserve, CanSampleBits, FieldChallenger, GrindingChallenger};
 use p3_commit::{BatchOpening, ExtensionMmcs, Mmcs, Pcs, PolynomialSpace};
